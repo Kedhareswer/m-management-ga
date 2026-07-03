@@ -1,0 +1,189 @@
+import type { ExtractedMeta, SeriesKind } from './types';
+import { detectChapterPattern } from './chapterUrl';
+
+const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:4000';
+
+const KNOWN_GENRES = [
+  'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Dark Fantasy', 'Horror',
+  'Isekai', 'Josei', 'Martial Arts', 'Mecha', 'Mystery', 'Psychological',
+  'Romance', 'School Life', 'Sci-Fi', 'Seinen', 'Shoujo', 'Shounen',
+  'Slice of Life', 'Sports', 'Supernatural', 'Thriller', 'Tragedy', 'Superhero',
+  'Mythology', 'Historical', 'Crime',
+];
+
+/**
+ * Ask the Playwright scraper service first (it renders JS-heavy readers),
+ * fall back to a plain fetch + meta-tag parse when it isn't running.
+ */
+export async function extractMeta(url: string): Promise<ExtractedMeta> {
+  try {
+    const res = await fetch(`${SCRAPER_URL}/extract`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return normalize(url, { ...data, extractor: 'playwright' });
+    }
+  } catch {
+    // Scraper service not reachable — use the built-in extractor.
+  }
+  return fallbackExtract(url);
+}
+
+async function fallbackExtract(url: string): Promise<ExtractedMeta> {
+  let html = '';
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        accept: 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(15_000),
+      redirect: 'follow',
+    });
+    html = await res.text();
+  } catch {
+    // Site unreachable: still return something useful from the URL itself.
+  }
+
+  const meta = (name: string): string | undefined => {
+    const re = new RegExp(
+      `<meta[^>]+(?:property|name)=["']${name}["'][^>]*content=["']([^"']+)["']|<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${name}["']`,
+      'i'
+    );
+    const m = html.match(re);
+    return m ? decodeEntities(m[1] || m[2]) : undefined;
+  };
+
+  const titleTag = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+  const rawTitle = meta('og:title') || meta('twitter:title') || titleTag || titleFromUrl(url);
+
+  return normalize(url, {
+    title: cleanTitle(rawTitle),
+    siteName: meta('og:site_name'),
+    description: meta('og:description') || meta('description'),
+    coverUrl: absolutize(meta('og:image') || meta('twitter:image'), url),
+    genres: sniffGenres(html),
+    author: meta('author') || meta('article:author'),
+    extractor: 'fallback',
+  });
+}
+
+function normalize(url: string, partial: Partial<ExtractedMeta>): ExtractedMeta {
+  const host = safeHost(url);
+  const detection = detectChapterPattern(url);
+  return {
+    title: cleanTitle(partial.title || titleFromUrl(url)),
+    site: host,
+    siteName: partial.siteName || prettyHost(host),
+    kind: partial.kind || guessKind(url, partial),
+    genres: dedupe(partial.genres || []).slice(0, 6),
+    author: partial.author,
+    description: partial.description?.slice(0, 400),
+    coverUrl: partial.coverUrl,
+    chapterUrlPattern: partial.chapterUrlPattern || detection?.pattern,
+    detectedChapter: partial.detectedChapter ?? detection?.chapter,
+    extractor: partial.extractor || 'fallback',
+  };
+}
+
+function sniffGenres(html: string): string[] {
+  const found = new Set<string>();
+  // 1) explicit genre links, the pattern most readers use
+  const linkRe = /<a[^>]+href=["'][^"']*(?:genre|genres|category|tag)[^"']*["'][^>]*>([^<]{2,30})<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = linkRe.exec(html)) && found.size < 8) {
+    const g = matchKnownGenre(m[1]);
+    if (g) found.add(g);
+  }
+  // 2) meta keywords
+  const kw = html.match(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i)?.[1];
+  if (kw) {
+    for (const part of kw.split(/[,;]/)) {
+      const g = matchKnownGenre(part);
+      if (g) found.add(g);
+    }
+  }
+  return [...found];
+}
+
+function matchKnownGenre(raw: string): string | undefined {
+  const t = decodeEntities(raw).trim().toLowerCase();
+  return KNOWN_GENRES.find((g) => g.toLowerCase() === t);
+}
+
+function guessKind(url: string, partial: Partial<ExtractedMeta>): SeriesKind {
+  const hay = `${url} ${partial.title || ''} ${partial.description || ''}`.toLowerCase();
+  if (/webtoon|manhwa|toomics|tapas/.test(hay)) return 'manhwa';
+  if (/manhua/.test(hay)) return 'manhua';
+  if (/\bcomic|marvel|dc\.com|darkhorse|image-?comics/.test(hay)) return 'comic';
+  if (/graphic.?novel/.test(hay)) return 'graphic-novel';
+  return 'manga';
+}
+
+function titleFromUrl(url: string): string {
+  try {
+    const path = new URL(url).pathname
+      .replace(/\/(chapter|chap|episode|ch)[-_/.]?[\d.-]*\/?$/i, '')
+      .split('/')
+      .filter(Boolean)
+      .pop();
+    if (!path) return safeHost(url);
+    return path
+      .replace(/[-_]+/g, ' ')
+      .replace(/\.(html?|php|aspx?)$/i, '')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim();
+  } catch {
+    return url;
+  }
+}
+
+function cleanTitle(t: string): string {
+  return decodeEntities(t)
+    // strip "Chapter 12", "- Chapter 12" and reader-site suffixes
+    .replace(/\s*[-–|:]?\s*(chapter|chap|episode|ch\.?)\s*[\d.]+.*$/i, '')
+    .replace(/\s*[-–|]\s*(read|free|online|manga|manhwa|webtoon)[^-–|]*$/i, '')
+    .trim()
+    .slice(0, 120) || t.trim().slice(0, 120);
+}
+
+function safeHost(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
+function prettyHost(host: string): string {
+  const core = host.replace(/^www\./, '').split('.')[0];
+  return core.charAt(0).toUpperCase() + core.slice(1);
+}
+
+function absolutize(src: string | undefined, base: string): string | undefined {
+  if (!src) return undefined;
+  try {
+    return new URL(src, base).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+function dedupe(list: string[]): string[] {
+  return [...new Set(list.map((g) => g.trim()).filter(Boolean))];
+}

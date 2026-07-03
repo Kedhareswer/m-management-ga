@@ -1,0 +1,14 @@
+{
+  "name": "mangashelf-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright extraction service for MangaShelf — renders reader sites and pulls title, genres, cover and chapter info",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

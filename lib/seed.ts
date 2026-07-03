@@ -1,0 +1,90 @@
+import type { Series } from './types';
+
+/**
+ * A small starter shelf so the dashboard looks alive on first run.
+ * Everything here is editable / deletable from the UI.
+ */
+export function seedLibrary(): Series[] {
+  const now = new Date().toISOString();
+  const base = { createdAt: now, updatedAt: now } as const;
+  return [
+    {
+      ...base,
+      id: 'seed-one-piece',
+      title: 'One Piece',
+      sourceUrl: 'https://mangaplus.shueisha.co.jp/titles/100020',
+      site: 'mangaplus.shueisha.co.jp',
+      siteName: 'MANGA Plus',
+      kind: 'manga',
+      genres: ['Adventure', 'Action', 'Fantasy'],
+      author: 'Eiichiro Oda',
+      description: 'Monkey D. Luffy sets sail to find the One Piece and become King of the Pirates.',
+      coverHue: 0,
+      status: 'reading',
+      currentChapter: 1088,
+      totalChapters: 1120,
+    },
+    {
+      ...base,
+      id: 'seed-solo-leveling',
+      title: 'Solo Leveling',
+      sourceUrl: 'https://www.webtoons.com/en/action/solo-leveling/list?title_no=3162',
+      site: 'www.webtoons.com',
+      siteName: 'WEBTOON',
+      kind: 'manhwa',
+      genres: ['Action', 'Fantasy'],
+      author: 'Chugong',
+      description: 'The weakest hunter of all mankind levels up alone.',
+      coverHue: 1,
+      status: 'reading',
+      currentChapter: 143,
+      totalChapters: 179,
+    },
+    {
+      ...base,
+      id: 'seed-berserk',
+      title: 'Berserk',
+      sourceUrl: 'https://example-manga-reader.com/berserk',
+      site: 'example-manga-reader.com',
+      siteName: 'Manga Reader',
+      kind: 'manga',
+      genres: ['Dark Fantasy', 'Action', 'Horror'],
+      author: 'Kentaro Miura',
+      description: 'Guts, the Black Swordsman, wages a war against fate itself.',
+      coverHue: 2,
+      status: 'paused',
+      currentChapter: 364,
+    },
+    {
+      ...base,
+      id: 'seed-spy-family',
+      title: 'SPY×FAMILY',
+      sourceUrl: 'https://mangaplus.shueisha.co.jp/titles/100056',
+      site: 'mangaplus.shueisha.co.jp',
+      siteName: 'MANGA Plus',
+      kind: 'manga',
+      genres: ['Comedy', 'Action', 'Slice of Life'],
+      author: 'Tatsuya Endo',
+      description: 'A spy, an assassin and a telepath pretend to be a family.',
+      coverHue: 3,
+      status: 'reading',
+      currentChapter: 92,
+    },
+    {
+      ...base,
+      id: 'seed-sandman',
+      title: 'The Sandman',
+      sourceUrl: 'https://www.dc.com/comics/the-sandman-1989',
+      site: 'www.dc.com',
+      siteName: 'DC',
+      kind: 'graphic-novel',
+      genres: ['Fantasy', 'Horror', 'Mythology'],
+      author: 'Neil Gaiman',
+      description: 'Dream of the Endless rebuilds his kingdom after decades of captivity.',
+      coverHue: 4,
+      status: 'plan-to-read',
+      currentChapter: 0,
+      totalChapters: 75,
+    },
+  ];
+}
