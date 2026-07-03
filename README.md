@@ -11,17 +11,18 @@ scrolling — and **Mango**, the little chat assistant in the right panel.
 
 ## ✨ Features
 
-- **Paste a link → shelf card.** A Playwright-powered scraper service renders
-  the page (even JS-heavy readers) and pulls title, genres, cover image,
-  author, description and site name. A built-in fallback extractor (meta / OG
-  tags) kicks in when the service isn't running, so the app always works.
+- **Paste a link → shelf card.** Playwright runs *inside* the Next.js server:
+  it renders the page in headless Chromium (even JS-heavy readers) and pulls
+  title, genres, cover image, author, description and site name. A
+  lightweight fetch + meta-tag fallback kicks in if the browser can't run, so
+  adding always works.
 - **Real cover art, even from hot-link-protected sites.** Manga CDNs usually
   refuse images without the right `Referer`, which is why hot-linked covers
   break. Covers are served through `/api/image`, which fetches server-side
-  with the series page as Referer, falls back to fetching through the
-  Playwright browser context when a site is stricter, and caches every cover
-  on disk (`DATA_DIR/covers`). Cover detection tries `og:image` → JSON-LD →
-  the largest portrait image on the page.
+  with the series page as Referer, escalates to a fetch through the Playwright
+  browser context when a site is stricter, and caches every cover on disk
+  (`DATA_DIR/covers`). Cover detection tries `og:image` → JSON-LD → the
+  largest portrait image on the page.
 - **Chapter bookmarks.** If the link you pasted contains a chapter number
   (`…/chapter-142`, `…/episode-9`, `?episode_no=143`…), MangaShelf learns the
   site's URL pattern. Bump the chapter with the ± stepper (or click the number
@@ -40,49 +41,43 @@ scrolling — and **Mango**, the little chat assistant in the right panel.
 
 ## 🚀 Run it
 
-### With Docker (web + Playwright scraper)
-
 ```bash
-docker compose up --build
+npm install
+npx playwright install chromium   # once — downloads the headless browser
+npm run dev                        # http://localhost:3000
 ```
 
-- Web app → http://localhost:3000
-- Scraper service → http://localhost:4000 (`POST /extract {"url": "…"}`)
-- Your library persists in the `library-data` volume.
+That's it — one app, no extra services. For production: `npm run build && npm start`.
 
-### Local development
+> **Note on hosting:** the app needs a real Node server (it launches
+> Chromium and writes your library to disk), so host it on a VPS, Railway,
+> Render, Fly.io, or via the Dockerfile below. Serverless platforms
+> (Vercel/Netlify functions, Cloudflare Workers) can't run the embedded
+> browser or persist the JSON library.
+
+### Docker (optional, single container)
 
 ```bash
-# 1. the web app
-npm install
-npm run dev            # http://localhost:3000
-
-# 2. (optional but recommended) the Playwright scraper
-cd scraper
-npm install
-npx playwright install chromium   # once, downloads the browser
-npm start                          # http://localhost:4000
+docker build -t mangashelf .
+docker run -p 3000:3000 -v mangashelf-data:/data mangashelf
 ```
 
-Without the scraper the app falls back to a lightweight meta-tag extractor —
-fine for most sites, but the Playwright service handles client-rendered
-readers much better.
+Chromium is baked into the image; your library persists in the
+`mangashelf-data` volume.
 
 ### Environment variables
 
-| Variable       | Where   | Default                 | Purpose                             |
-| -------------- | ------- | ----------------------- | ----------------------------------- |
-| `SCRAPER_URL`  | web     | `http://localhost:4000` | Where the Playwright service lives  |
-| `DATA_DIR`     | web     | `./data`                | Folder for `library.json`           |
-| `PORT`         | scraper | `4000`                  | Scraper port                        |
-| `CHROMIUM_PATH`| scraper | Playwright's own        | Use a pre-installed Chromium binary |
+| Variable             | Default            | Purpose                                        |
+| -------------------- | ------------------ | ---------------------------------------------- |
+| `DATA_DIR`           | `./data`           | Folder for `library.json` and the cover cache  |
+| `CHROMIUM_PATH`      | Playwright's own   | Use a pre-installed Chromium binary            |
+| `DISABLE_PLAYWRIGHT` | unset              | Set to `1` to force the lightweight extractor  |
 
 ## 🧱 Stack
 
 - **Next.js 15** (App Router, TypeScript) + **Tailwind CSS**
 - **GSAP** for motion, **Lenis** for smooth scrolling
-- **Playwright** scraper micro-service (Node, Dockerised with the official
-  Playwright image)
+- **Playwright** embedded in the server for extraction & cover fetching
 - JSON file storage — zero database setup, your shelf is one readable file
 
 ## 🗺️ How the chapter redirect works
@@ -100,9 +95,8 @@ chapter URL you saved, then to the series page.
 ## 📁 Project layout
 
 ```
-app/            Next.js routes (dashboard, /api/manga, /api/chat, /go/:id)
+app/            Next.js routes (dashboard, /api/manga, /api/chat, /api/image, /go/:id)
 components/     Dashboard, shelf cards, chat panel, genre chips, …
-lib/            store (JSON), extractors, chapter-URL detection, Mango's brain
-scraper/        Playwright extraction service (own Dockerfile)
-docker-compose.yml
+lib/            store (JSON), playwright extractor, chapter-URL detection, Mango's brain
+Dockerfile      optional single-container deploy (Chromium included)
 ```

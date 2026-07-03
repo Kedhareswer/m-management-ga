@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import { browserFetchImage } from '@/lib/playwright';
 
 export const dynamic = 'force-dynamic';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const COVER_DIR = path.join(DATA_DIR, 'covers');
-const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:4000';
 const MAX_BYTES = 8 * 1024 * 1024;
 
 /**
@@ -15,8 +15,8 @@ const MAX_BYTES = 8 * 1024 * 1024;
  *
  * Cover-image proxy. Manga sites usually block hot-linking, so the browser
  * can't load covers directly. We fetch server-side with the series page as
- * Referer; if the site still refuses, the Playwright service fetches it
- * through a real browser context. Successful covers are cached on disk.
+ * Referer; if the site still refuses, the in-app Playwright browser fetches
+ * it through a real browser context. Successful covers are cached on disk.
  */
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get('url');
@@ -43,8 +43,8 @@ export async function GET(req: NextRequest) {
   // 2) direct fetch with polite headers
   let fetched = await directFetch(url, ref);
 
-  // 3) blocked? let the Playwright service fetch it through the browser
-  if (!fetched) fetched = await scraperFetch(url, ref);
+  // 3) blocked? fetch it through the in-app Playwright browser context
+  if (!fetched) fetched = await browserFetch(url, ref);
 
   if (!fetched) {
     return NextResponse.json({ error: 'Could not fetch cover' }, { status: 502 });
@@ -88,16 +88,10 @@ async function directFetch(url: string, ref?: string): Promise<Fetched | null> {
   }
 }
 
-async function scraperFetch(url: string, ref?: string): Promise<Fetched | null> {
+async function browserFetch(url: string, ref?: string): Promise<Fetched | null> {
+  if (process.env.DISABLE_PLAYWRIGHT === '1') return null;
   try {
-    const qs = new URLSearchParams({ url, ...(ref ? { ref } : {}) });
-    const res = await fetch(`${SCRAPER_URL}/image?${qs}`, {
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) return null;
-    const type = res.headers.get('content-type') || '';
-    if (!type.startsWith('image/')) return null;
-    const body = Buffer.from(await res.arrayBuffer());
+    const { body, type } = await browserFetchImage(url, ref);
     if (body.length === 0 || body.length > MAX_BYTES) return null;
     return { body, type };
   } catch {

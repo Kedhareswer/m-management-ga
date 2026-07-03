@@ -1,7 +1,6 @@
 import type { ExtractedMeta, SeriesKind } from './types';
 import { detectChapterPattern } from './chapterUrl';
-
-const SCRAPER_URL = process.env.SCRAPER_URL || 'http://localhost:4000';
+import { browserExtract } from './playwright';
 
 const KNOWN_GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Dark Fantasy', 'Horror',
@@ -12,23 +11,20 @@ const KNOWN_GENRES = [
 ];
 
 /**
- * Ask the Playwright scraper service first (it renders JS-heavy readers),
- * fall back to a plain fetch + meta-tag parse when it isn't running.
+ * Render the page with the in-app headless Chromium first (handles JS-heavy
+ * readers), fall back to a plain fetch + meta-tag parse when the browser
+ * can't launch or the page won't load.
  */
 export async function extractMeta(url: string): Promise<ExtractedMeta> {
-  try {
-    const res = await fetch(`${SCRAPER_URL}/extract`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url }),
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (res.ok) {
-      const data = await res.json();
+  if (process.env.DISABLE_PLAYWRIGHT !== '1') {
+    try {
+      const data = await browserExtract(url);
       return normalize(url, { ...data, extractor: 'playwright' });
+    } catch (err) {
+      console.warn(
+        `[extract] browser extraction failed (${err instanceof Error ? err.message : err}), using fallback`
+      );
     }
-  } catch {
-    // Scraper service not reachable — use the built-in extractor.
   }
   return fallbackExtract(url);
 }
