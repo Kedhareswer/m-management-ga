@@ -78,11 +78,47 @@ async function extract(url) {
         .map((el) => el.textContent?.trim())
         .find((t) => t && t.length > 2 && t.length < 60);
 
+      // Cover: og/twitter image → JSON-LD image → the biggest cover-shaped
+      // <img> on the page (portrait, reasonably large — how readers lay
+      // out their cover art).
+      let coverUrl = meta('og:image') || meta('twitter:image');
+      if (!coverUrl) {
+        for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+          try {
+            const ld = JSON.parse(script.textContent);
+            const nodes = Array.isArray(ld) ? ld : [ld];
+            for (const node of nodes) {
+              const img = typeof node.image === 'string' ? node.image : node.image?.url;
+              if (img) { coverUrl = img; break; }
+            }
+          } catch {}
+          if (coverUrl) break;
+        }
+      }
+      if (!coverUrl) {
+        const candidates = [...document.querySelectorAll(
+          '.cover img, .thumb img, .thumbnail img, [class*="cover"] img, [class*="poster"] img, img[src*="cover"], img[src*="thumb"], article img, main img, img'
+        )];
+        let best = null;
+        let bestScore = 0;
+        for (const img of candidates) {
+          const src = img.currentSrc || img.src;
+          if (!src || src.startsWith('data:')) continue;
+          const w = img.naturalWidth || img.width;
+          const h = img.naturalHeight || img.height;
+          if (w < 100 || h < 140) continue; // too small to be a cover
+          const portrait = h > w ? 2 : 1;   // covers are portrait
+          const score = w * h * portrait;
+          if (score > bestScore) { bestScore = score; best = src; }
+        }
+        coverUrl = best || undefined;
+      }
+
       return {
         title: meta('og:title') || meta('twitter:title') || document.title || undefined,
         siteName: meta('og:site_name'),
         description: meta('og:description') || meta('description'),
-        coverUrl: meta('og:image') || meta('twitter:image'),
+        coverUrl,
         genres: [...genres],
         author: ldAuthor || authorLabel?.replace(/^author[:\s]*/i, ''),
       };
@@ -99,7 +135,59 @@ async function extract(url) {
   }
 }
 
+/**
+ * Fetch an image through the browser's network stack — carries a real
+ * browser TLS/header fingerprint plus the Referer, which gets past the
+ * hot-link protection most manga CDNs use.
+ */
+async function fetchImage(url, ref) {
+  const browser = await getBrowser();
+  const context = await browser.newContext({
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+  });
+  try {
+    const resp = await context.request.get(url, {
+      headers: {
+        accept: 'image/avif,image/webp,image/png,image/jpeg,image/svg+xml,image/*;q=0.8',
+        ...(ref ? { referer: ref } : {}),
+      },
+      timeout: 20_000,
+      maxRedirects: 5,
+    });
+    if (!resp.ok()) throw new Error(`upstream ${resp.status()}`);
+    const type = resp.headers()['content-type'] || 'image/jpeg';
+    if (!type.startsWith('image/')) throw new Error(`not an image: ${type}`);
+    return { body: await resp.body(), type };
+  } finally {
+    await context.close();
+  }
+}
+
 const server = http.createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url?.startsWith('/image?')) {
+    const params = new URL(req.url, 'http://x').searchParams;
+    const url = params.get('url');
+    const ref = params.get('ref') || undefined;
+    if (!url || !/^https?:\/\//i.test(url)) {
+      res.statusCode = 400;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ error: 'url must be http(s)' }));
+      return;
+    }
+    try {
+      const { body, type } = await fetchImage(url, ref);
+      res.setHeader('content-type', type);
+      res.end(body);
+    } catch (err) {
+      console.error('[image] failed:', err.message);
+      res.statusCode = 502;
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ error: `Image fetch failed: ${err.message}` }));
+    }
+    return;
+  }
+
   res.setHeader('content-type', 'application/json');
 
   if (req.method === 'GET' && req.url === '/health') {

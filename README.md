@@ -15,6 +15,13 @@ scrolling — and **Mango**, the little chat assistant in the right panel.
   the page (even JS-heavy readers) and pulls title, genres, cover image,
   author, description and site name. A built-in fallback extractor (meta / OG
   tags) kicks in when the service isn't running, so the app always works.
+- **Real cover art, even from hot-link-protected sites.** Manga CDNs usually
+  refuse images without the right `Referer`, which is why hot-linked covers
+  break. Covers are served through `/api/image`, which fetches server-side
+  with the series page as Referer, falls back to fetching through the
+  Playwright browser context when a site is stricter, and caches every cover
+  on disk (`DATA_DIR/covers`). Cover detection tries `og:image` → JSON-LD →
+  the largest portrait image on the page.
 - **Chapter bookmarks.** If the link you pasted contains a chapter number
   (`…/chapter-142`, `…/episode-9`, `?episode_no=143`…), MangaShelf learns the
   site's URL pattern. Bump the chapter with the ± stepper (or click the number

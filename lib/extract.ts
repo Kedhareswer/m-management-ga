@@ -61,12 +61,15 @@ async function fallbackExtract(url: string): Promise<ExtractedMeta> {
 
   const titleTag = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
   const rawTitle = meta('og:title') || meta('twitter:title') || titleTag || titleFromUrl(url);
+  const imageSrcLink = html.match(
+    /<link[^>]+rel=["']image_src["'][^>]*href=["']([^"']+)["']/i
+  )?.[1];
 
   return normalize(url, {
     title: cleanTitle(rawTitle),
     siteName: meta('og:site_name'),
     description: meta('og:description') || meta('description'),
-    coverUrl: absolutize(meta('og:image') || meta('twitter:image'), url),
+    coverUrl: absolutize(meta('og:image') || meta('twitter:image') || imageSrcLink, url),
     genres: sniffGenres(html),
     author: meta('author') || meta('article:author'),
     extractor: 'fallback',

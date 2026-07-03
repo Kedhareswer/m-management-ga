@@ -18,6 +18,16 @@ export const COVER_PALETTES = [
  * Uses the extracted cover image when there is one, otherwise a hand-drawn
  * CSS jacket with the title set like a cloth-bound classic.
  */
+/**
+ * Manga sites usually block hot-linked images, so external covers are
+ * routed through our proxy, which fetches them server-side with the
+ * series page as Referer (and via the Playwright service if needed).
+ */
+function coverSrc(coverUrl: string, sourceUrl: string): string {
+  if (!/^https?:\/\//i.test(coverUrl)) return coverUrl;
+  return `/api/image?url=${encodeURIComponent(coverUrl)}&ref=${encodeURIComponent(sourceUrl)}`;
+}
+
 export default function BookCover({
   series,
   className = '',
@@ -38,7 +48,7 @@ export default function BookCover({
         {showImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={series.coverUrl}
+            src={coverSrc(series.coverUrl!, series.sourceUrl)}
             alt={series.title}
             className="h-full w-full object-cover"
             onError={() => setImgFailed(true)}
