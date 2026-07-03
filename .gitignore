@@ -13,7 +13,7 @@ build/
 dist/
 
 # local data (your personal library lives here)
-data/*.json
+data/
 
 # misc
 .DS_Store

@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="580">
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-<stop offset="0" stop-color="#1a1a2e"/><stop offset="1" stop-color="#e2574c"/></linearGradient></defs>
-<rect width="400" height="580" fill="url(#g)"/>
-<circle cx="200" cy="230" r="90" fill="none" stroke="#7de3ea" stroke-width="10"/>
-<circle cx="200" cy="230" r="40" fill="#7de3ea"/>
-<text x="200" y="430" font-family="sans-serif" font-size="52" font-weight="bold" fill="#fff" text-anchor="middle">NANO</text>
-<text x="200" y="490" font-family="sans-serif" font-size="52" font-weight="bold" fill="#fff" text-anchor="middle">MACHINE</text>
-</svg>
