@@ -19,6 +19,8 @@ export interface Series {
   /** Index into the palette used when there is no cover image. */
   coverHue: number;
   status: ReadingStatus;
+  /** Starred from the shelf — independent of reading status. */
+  favorite: boolean;
   currentChapter: number;
   totalChapters?: number;
   /**

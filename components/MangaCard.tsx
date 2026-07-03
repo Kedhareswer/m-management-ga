@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { Series } from '@/lib/types';
 import BookCover from './BookCover';
-import { MinusIcon, PlusIcon, TrashIcon, ExternalIcon } from './icons';
+import { MinusIcon, PlusIcon, TrashIcon, ExternalIcon, StarIcon } from './icons';
 
 const STATUS_LABEL: Record<Series['status'], string> = {
   reading: 'Reading',
@@ -22,10 +22,12 @@ const STATUS_TINT: Record<Series['status'], string> = {
 export default function MangaCard({
   series,
   onChapterChange,
+  onToggleFavorite,
   onDelete,
 }: {
   series: Series;
   onChapterChange: (id: string, chapter: number) => void;
+  onToggleFavorite: (id: string, favorite: boolean) => void;
   onDelete: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -48,15 +50,31 @@ export default function MangaCard({
       className="group flex w-[196px] shrink-0 flex-col rounded-blob bg-card p-4 shadow-soft transition-shadow hover:shadow-lift"
     >
       {/* Cover links straight to the chapter you're on */}
-      <a
-        href={`/go/${series.id}`}
-        target="_blank"
-        rel="noreferrer"
-        title={`Continue at chapter ${series.currentChapter}`}
-        className="block transition-transform duration-300 group-hover:-translate-y-1.5 group-hover:rotate-[-1.5deg]"
-      >
-        <BookCover series={series} className="h-[190px] w-full" />
-      </a>
+      <div className="relative">
+        <a
+          href={`/go/${series.id}`}
+          target="_blank"
+          rel="noreferrer"
+          title={`Continue at chapter ${series.currentChapter}`}
+          className="block transition-transform duration-300 group-hover:-translate-y-1.5 group-hover:rotate-[-1.5deg]"
+        >
+          <BookCover series={series} className="h-[190px] w-full" />
+        </a>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            onToggleFavorite(series.id, !series.favorite);
+          }}
+          className={`absolute left-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full shadow-soft transition active:scale-90 ${
+            series.favorite ? 'bg-sun text-white' : 'bg-card/90 text-fawn hover:text-sun'
+          }`}
+          title={series.favorite ? 'Remove from favourites' : 'Add to favourites'}
+          aria-pressed={series.favorite}
+          aria-label={series.favorite ? 'Remove from favourites' : 'Add to favourites'}
+        >
+          <StarIcon fill={series.favorite ? 'currentColor' : 'none'} />
+        </button>
+      </div>
 
       <div className="mt-5 flex items-start justify-between gap-1">
         <div className="min-w-0">

@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
     description: meta.description,
     coverUrl: meta.coverUrl,
     coverHue: existing.length % 6,
+    favorite: false,
     status: 'reading',
     currentChapter: body.currentChapter ?? meta.detectedChapter ?? 0,
     chapterUrlPattern: meta.chapterUrlPattern,

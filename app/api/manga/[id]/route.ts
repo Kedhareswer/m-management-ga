@@ -29,7 +29,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   }
 
   const allowed: (keyof Series)[] = [
-    'title', 'currentChapter', 'totalChapters', 'status', 'genres', 'kind',
+    'title', 'currentChapter', 'totalChapters', 'status', 'favorite', 'genres', 'kind',
     'author', 'description', 'coverUrl', 'lastReadUrl', 'chapterUrlPattern', 'sourceUrl',
   ];
   const safe: Partial<Series> = {};

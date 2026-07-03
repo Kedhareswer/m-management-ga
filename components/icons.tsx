@@ -114,6 +114,24 @@ export const SparkleIcon = (p: P) => (
   </svg>
 );
 
+export const ChatIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={18} height={18} {...base} {...p}>
+    <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+  </svg>
+);
+
+export const CloseIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={16} height={16} {...base} {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+export const RefreshIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={18} height={18} {...base} {...p}>
+    <path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" />
+  </svg>
+);
+
 /** Tiny book glyph used in the genre chips row. */
 export const BookGlyph = ({ tint = '#e2574c', ...p }: P & { tint?: string }) => (
   <svg viewBox="0 0 32 32" width={34} height={34} {...p}>

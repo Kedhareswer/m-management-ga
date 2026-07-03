@@ -5,7 +5,7 @@ import gsap from 'gsap';
 import type { Series } from '@/lib/types';
 import type { BotReply } from '@/lib/bot';
 import BookCover from './BookCover';
-import { SendIcon, ClipIcon, ChevronIcon } from './icons';
+import { SendIcon, ClipIcon, ChevronIcon, CloseIcon } from './icons';
 
 interface Message {
   id: number;
@@ -26,7 +26,13 @@ const OPENERS: Message[] = [
   },
 ];
 
-export default function ChatPanel({ onLibraryChange }: { onLibraryChange: () => void }) {
+export default function ChatPanel({
+  onLibraryChange,
+  onClose,
+}: {
+  onLibraryChange: () => void;
+  onClose: () => void;
+}) {
   const [messages, setMessages] = useState<Message[]>(OPENERS);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -79,11 +85,14 @@ export default function ChatPanel({ onLibraryChange }: { onLibraryChange: () => 
     <aside data-intro="chat" className="flex w-[320px] shrink-0 flex-col rounded-panel bg-[#efe6d5] p-5 shadow-inner1">
       <header className="flex items-center justify-between">
         <h2 className="text-[17px] font-extrabold">Chat</h2>
-        <div className="grid grid-cols-2 gap-1 opacity-50" aria-hidden>
-          {[...Array(4)].map((_, i) => (
-            <span key={i} className="h-1.5 w-1.5 rounded-full bg-ink" />
-          ))}
-        </div>
+        <button
+          onClick={onClose}
+          className="icon-btn !h-8 !w-8"
+          title="Hide chat"
+          aria-label="Hide chat"
+        >
+          <CloseIcon />
+        </button>
       </header>
 
       <button className="mt-4 flex items-center gap-3 rounded-blob bg-card px-4 py-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift">
