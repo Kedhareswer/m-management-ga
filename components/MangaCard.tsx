@@ -24,11 +24,13 @@ export default function MangaCard({
   onChapterChange,
   onToggleFavorite,
   onDelete,
+  onOpen,
 }: {
   series: Series;
   onChapterChange: (id: string, chapter: number) => void;
   onToggleFavorite: (id: string, favorite: boolean) => void;
   onDelete: (id: string) => void;
+  onOpen: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(series.currentChapter));
@@ -49,17 +51,15 @@ export default function MangaCard({
       data-shelf-card
       className="group flex w-[196px] shrink-0 flex-col rounded-blob bg-card p-4 shadow-soft transition-shadow hover:shadow-lift"
     >
-      {/* Cover links straight to the chapter you're on */}
+      {/* Cover opens the detail view; "Continue reading" jumps to the chapter */}
       <div className="relative">
-        <a
-          href={`/go/${series.id}`}
-          target="_blank"
-          rel="noreferrer"
-          title={`Continue at chapter ${series.currentChapter}`}
-          className="block transition-transform duration-300 group-hover:-translate-y-1.5 group-hover:rotate-[-1.5deg]"
+        <button
+          onClick={() => onOpen(series.id)}
+          title={`${series.title} — details`}
+          className="block w-full transition-transform duration-300 group-hover:-translate-y-1.5 group-hover:rotate-[-1.5deg]"
         >
           <BookCover series={series} className="h-[190px] w-full" />
-        </a>
+        </button>
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -77,14 +77,14 @@ export default function MangaCard({
       </div>
 
       <div className="mt-5 flex items-start justify-between gap-1">
-        <div className="min-w-0">
-          <h3 className="truncate text-[15px] font-bold leading-tight" title={series.title}>
+        <button className="min-w-0 text-left" onClick={() => onOpen(series.id)} title={`${series.title} — details`}>
+          <h3 className="truncate text-[15px] font-bold leading-tight">
             {series.title}
           </h3>
           <p className="truncate text-[11px] font-semibold text-tomato/80">
             {series.author || series.siteName}
           </p>
-        </div>
+        </button>
         <button
           onClick={() => onDelete(series.id)}
           className="mt-0.5 hidden shrink-0 text-fawn transition hover:text-tomato group-hover:block"

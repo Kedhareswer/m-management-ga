@@ -23,6 +23,10 @@ export interface Series {
   favorite: boolean;
   currentChapter: number;
   totalChapters?: number;
+  /** When the user started reading (defaults to when it was added). */
+  startedAt?: string;
+  /** Set automatically when status flips to "completed". */
+  completedAt?: string;
   /**
    * Chapter URL template with "{chapter}" placeholder, detected when the
    * pasted link contained a chapter number, e.g.

@@ -69,14 +69,34 @@ export async function browserExtract(url: string): Promise<Partial<ExtractedMeta
         const hit = genreList.find((g) => g.toLowerCase() === t);
         if (hit) genres.add(hit);
       };
+      // Site chrome (nav menus, footers) often lists EVERY genre — skip it.
+      const inChrome = (el: Element) => el.closest('nav, header, footer') !== null;
 
-      // genre/tag links — the pattern nearly every reader uses
+      // 1) genre/tag links — the pattern classic readers use
       document
         .querySelectorAll(
           'a[href*="genre"], a[href*="genres"], a[href*="category"], a[href*="/tag"], .genres a, .genre a, [class*="genre"] a'
         )
-        .forEach((a) => addGenre(a.textContent));
+        .forEach((a) => {
+          if (!inChrome(a)) addGenre(a.textContent);
+        });
+      // 2) modern readers (Asura & co) render genres as plain chips —
+      //    spans/buttons/list items inside genre/tag-ish containers
+      document
+        .querySelectorAll('[class*="genre"] *, [class*="tag"] *, [class*="Genre"] *')
+        .forEach((el) => {
+          if (!inChrome(el) && (el.textContent || '').trim().length <= 25) addGenre(el.textContent);
+        });
       (meta('keywords') || '').split(/[,;]/).forEach(addGenre);
+      // 3) last resort: any short-text element in the page body that exactly
+      //    matches a known genre name
+      if (genres.size === 0) {
+        document.querySelectorAll('a, span, button, li').forEach((el) => {
+          if (inChrome(el)) return;
+          const t = (el.textContent || '').trim();
+          if (t.length >= 3 && t.length <= 25 && el.children.length === 0) addGenre(t);
+        });
+      }
 
       // JSON-LD sometimes carries genre + author + image
       let ldGenre: unknown, ldAuthor: string | undefined, ldImage: string | undefined;
@@ -93,9 +113,21 @@ export async function browserExtract(url: string): Promise<Partial<ExtractedMeta
       }
       if (ldGenre) (Array.isArray(ldGenre) ? ldGenre : [ldGenre]).forEach((v) => addGenre(String(v)));
 
-      const authorLabel = [...document.querySelectorAll('a[href*="author"], .author, [class*="author"]')]
+      let authorLabel = [...document.querySelectorAll('a[href*="author"], .author, [class*="author"]')]
         .map((el) => el.textContent?.trim())
         .find((t) => t && t.length > 2 && t.length < 60);
+      // "Author" / "Artist" label followed by the name (Asura-style info grids)
+      if (!authorLabel) {
+        const label = [...document.querySelectorAll('span, div, dt, b, strong, h3, h4, h5')].find(
+          (el) => /^(author|artist)s?:?\s*$/i.test((el.textContent || '').trim()) && el.children.length === 0
+        );
+        const candidate =
+          label?.nextElementSibling?.textContent?.trim() ||
+          label?.parentElement?.textContent?.replace(/^(author|artist)s?:?\s*/i, '').trim();
+        if (candidate && candidate.length > 1 && candidate.length < 60 && !/^(author|artist)/i.test(candidate)) {
+          authorLabel = candidate;
+        }
+      }
 
       // Cover: og/twitter image → JSON-LD image → the biggest cover-shaped
       // <img> on the page (portrait, reasonably large).

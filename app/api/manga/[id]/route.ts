@@ -32,6 +32,7 @@ export const PATCH = withErrors(async (req: NextRequest, ctx: Ctx) => {
   const allowed: (keyof Series)[] = [
     'title', 'currentChapter', 'totalChapters', 'status', 'favorite', 'genres', 'kind',
     'author', 'description', 'coverUrl', 'lastReadUrl', 'chapterUrlPattern', 'sourceUrl',
+    'startedAt', 'completedAt',
   ];
   const safe: Partial<Series> = {};
   for (const key of allowed) {
@@ -40,6 +41,21 @@ export const PATCH = withErrors(async (req: NextRequest, ctx: Ctx) => {
 
   if (typeof safe.currentChapter === 'number') {
     safe.currentChapter = Math.max(0, safe.currentChapter);
+  }
+
+  // Reading dates follow the status automatically: finishing stamps the end
+  // date, un-finishing clears it again.
+  if (safe.status) {
+    const current = await getSeries(id);
+    if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (safe.status === 'completed' && !current.completedAt) {
+      safe.completedAt = new Date().toISOString();
+    } else if (safe.status !== 'completed' && current.completedAt) {
+      safe.completedAt = undefined;
+    }
+    if (safe.status === 'reading' && !current.startedAt) {
+      safe.startedAt = new Date().toISOString();
+    }
   }
 
   if (safe.lastReadUrl) {

@@ -8,6 +8,7 @@ import { fetchJson } from '@/lib/fetchJson';
 import Sidebar, { type NavFilter } from './Sidebar';
 import AddBar from './AddBar';
 import AddMangaModal from './AddMangaModal';
+import SeriesDetailModal from './SeriesDetailModal';
 import GenreChips from './GenreChips';
 import MangaCard from './MangaCard';
 import StatsBanner from './StatsBanner';
@@ -30,6 +31,7 @@ export default function Dashboard() {
   const [navFilter, setNavFilter] = useState<NavFilter>('all');
   const [addOpen, setAddOpen] = useState(false);
   const [addPrefill, setAddPrefill] = useState('');
+  const [detailId, setDetailId] = useState<string | null>(null);
   // Chat starts open only where it fits beside the shelf (lg+); on phones
   // it's a full-screen overlay the user opens from the top bar.
   const [chatOpen, setChatOpen] = useState(false);
@@ -182,26 +184,44 @@ export default function Dashboard() {
     [refresh, flash]
   );
 
-  const changeChapter = useCallback(async (id: string, chapter: number) => {
-    // optimistic update — the stepper should feel instant
-    setLibrary((lib) =>
-      lib ? lib.map((s) => (s.id === id ? { ...s, currentChapter: chapter } : s)) : lib
-    );
-    await fetch(`/api/manga/${id}`, {
+  const patchSeries = useCallback(async (id: string, patch: Partial<Series>) => {
+    // optimistic update — edits should feel instant
+    setLibrary((lib) => (lib ? lib.map((s) => (s.id === id ? { ...s, ...patch } : s)) : lib));
+    const res = await fetchJson<Series>(`/api/manga/${id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ currentChapter: chapter }),
+      body: JSON.stringify(patch),
     });
+    // reconcile with the server copy (it stamps dates like completedAt)
+    if (res.ok && res.data) {
+      const server = res.data;
+      setLibrary((lib) => (lib ? lib.map((s) => (s.id === id ? server : s)) : lib));
+    }
   }, []);
 
-  const toggleFavorite = useCallback(async (id: string, favorite: boolean) => {
-    setLibrary((lib) => (lib ? lib.map((s) => (s.id === id ? { ...s, favorite } : s)) : lib));
-    await fetch(`/api/manga/${id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ favorite }),
-    });
-  }, []);
+  const changeChapter = useCallback(
+    (id: string, chapter: number) => patchSeries(id, { currentChapter: chapter }),
+    [patchSeries]
+  );
+
+  const toggleFavorite = useCallback(
+    (id: string, favorite: boolean) => patchSeries(id, { favorite }),
+    [patchSeries]
+  );
+
+  const refreshMeta = useCallback(
+    async (id: string) => {
+      const res = await fetchJson<{ series: Series }>(`/api/manga/${id}/refresh`, { method: 'POST' });
+      if (res.ok && res.data?.series) {
+        const server = res.data.series;
+        setLibrary((lib) => (lib ? lib.map((s) => (s.id === id ? server : s)) : lib));
+        flash('Details refreshed! ✨');
+      } else {
+        flash(res.error || 'Could not re-extract details 😢');
+      }
+    },
+    [flash]
+  );
 
   const removeSeries = useCallback(
     async (id: string) => {
@@ -330,6 +350,7 @@ export default function Dashboard() {
                       onChapterChange={changeChapter}
                       onToggleFavorite={toggleFavorite}
                       onDelete={removeSeries}
+                      onOpen={setDetailId}
                     />
                   </div>
                 ))
@@ -352,6 +373,14 @@ export default function Dashboard() {
         initialUrl={addPrefill}
         onClose={() => setAddOpen(false)}
         onAdd={addByUrl}
+      />
+
+      <SeriesDetailModal
+        series={library?.find((s) => s.id === detailId) ?? null}
+        onClose={() => setDetailId(null)}
+        onPatch={patchSeries}
+        onDelete={removeSeries}
+        onRefreshMeta={refreshMeta}
       />
 
       {toast && (

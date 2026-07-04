@@ -56,6 +56,7 @@ export const POST = withErrors(async (req: NextRequest) => {
     coverHue: existing.length % 6,
     favorite: false,
     status: 'reading',
+    startedAt: new Date().toISOString(),
     currentChapter: body.currentChapter ?? meta.detectedChapter ?? 0,
     chapterUrlPattern: meta.chapterUrlPattern,
     lastReadUrl: meta.detectedChapter ? url : undefined,

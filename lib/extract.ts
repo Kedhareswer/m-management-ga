@@ -91,19 +91,29 @@ function normalize(url: string, partial: Partial<ExtractedMeta>): ExtractedMeta 
 }
 
 function sniffGenres(html: string): string[] {
+  // Nav menus and footers list every genre a site has — cut them out first.
+  const body = html.replace(/<(nav|header|footer)[\s\S]*?<\/\1>/gi, '');
   const found = new Set<string>();
-  // 1) explicit genre links, the pattern most readers use
+  // 1) explicit genre links, the pattern classic readers use
   const linkRe = /<a[^>]+href=["'][^"']*(?:genre|genres|category|tag)[^"']*["'][^>]*>([^<]{2,30})<\/a>/gi;
   let m: RegExpExecArray | null;
-  while ((m = linkRe.exec(html)) && found.size < 8) {
+  while ((m = linkRe.exec(body)) && found.size < 8) {
     const g = matchKnownGenre(m[1]);
     if (g) found.add(g);
   }
   // 2) meta keywords
-  const kw = html.match(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i)?.[1];
+  const kw = body.match(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']+)["']/i)?.[1];
   if (kw) {
     for (const part of kw.split(/[,;]/)) {
       const g = matchKnownGenre(part);
+      if (g) found.add(g);
+    }
+  }
+  // 3) modern readers render genres as plain chips (spans/buttons/list items)
+  if (found.size === 0) {
+    const chipRe = /<(?:span|button|li|a)[^>]*>\s*([^<>]{3,25}?)\s*<\/(?:span|button|li|a)>/gi;
+    while ((m = chipRe.exec(body)) && found.size < 6) {
+      const g = matchKnownGenre(m[1]);
       if (g) found.add(g);
     }
   }
