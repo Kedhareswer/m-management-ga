@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  // Playwright runs server-side in API routes; keep it out of the bundle.
-  serverExternalPackages: ['playwright'],
+  // Server-only packages that must not be bundled.
+  serverExternalPackages: ['playwright', 'undici', '@neondatabase/serverless'],
   images: {
     // Covers are hot-linked from whatever site a series was added from,
     // so we can't enumerate remote hosts — plain <img> is used instead.

@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { chatComplete, type AIConfig } from './ai';
 import { withTimeout } from './timeout';
+import { dbEnabled, getSql, ensureSchema } from './db';
 
 /**
  * Agent memory for Mango. The full conversation is persisted to disk so
@@ -37,6 +38,17 @@ const g = globalThis as typeof globalThis & { __mangaMemChat?: ChatMemory };
 let writeChain: Promise<unknown> = Promise.resolve();
 
 export async function loadMemory(): Promise<ChatMemory> {
+  if (dbEnabled()) {
+    await ensureSchema();
+    const sql = getSql();
+    const rows = (await sql`SELECT summary, messages FROM chat_memory WHERE id = 1`) as {
+      summary: string;
+      messages: StoredMessage[];
+    }[];
+    return rows[0]
+      ? { summary: rows[0].summary, messages: rows[0].messages }
+      : { summary: '', messages: [] };
+  }
   if (g.__mangaMemChat) return g.__mangaMemChat;
   try {
     const raw = await fs.readFile(FILE, 'utf8');
@@ -51,6 +63,14 @@ export async function loadMemory(): Promise<ChatMemory> {
 }
 
 async function saveMemory(mem: ChatMemory): Promise<void> {
+  if (dbEnabled()) {
+    await ensureSchema();
+    const sql = getSql();
+    await sql`INSERT INTO chat_memory (id, summary, messages)
+      VALUES (1, ${mem.summary}, ${JSON.stringify(mem.messages)}::jsonb)
+      ON CONFLICT (id) DO UPDATE SET summary = EXCLUDED.summary, messages = EXCLUDED.messages`;
+    return;
+  }
   if (g.__mangaMemChat) {
     g.__mangaMemChat = mem;
     return;

@@ -10,12 +10,14 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "gsap": "^3.12.5",
     "lenis": "^1.1.14",
     "next": "^15.1.0",
     "playwright": "^1.49.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "undici": "^8.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
