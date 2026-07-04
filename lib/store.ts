@@ -2,7 +2,6 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import type { Series } from './types';
-import { seedLibrary } from './seed';
 import { withTimeout } from './timeout';
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -45,11 +44,12 @@ async function readAll(): Promise<Series[]> {
     const raw = await fs.readFile(DB_FILE, 'utf8');
     return JSON.parse(raw) as Series[];
   } catch {
-    // First run (or unreadable file): seed. Persisting the seed is
-    // best-effort — reading your shelf must never require a disk write.
-    const seeded = seedLibrary();
-    await persist(seeded);
-    return seeded;
+    // First run: an empty shelf — the user adds their own series.
+    // Persisting it is best-effort (also probes storage writability early);
+    // reading your shelf must never require a disk write.
+    const empty: Series[] = [];
+    await persist(empty);
+    return empty;
   }
 }
 

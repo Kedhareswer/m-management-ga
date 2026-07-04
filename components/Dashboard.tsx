@@ -30,7 +30,12 @@ export default function Dashboard() {
   const [navFilter, setNavFilter] = useState<NavFilter>('all');
   const [addOpen, setAddOpen] = useState(false);
   const [addPrefill, setAddPrefill] = useState('');
-  const [chatOpen, setChatOpen] = useState(true);
+  // Chat starts open only where it fits beside the shelf (lg+); on phones
+  // it's a full-screen overlay the user opens from the top bar.
+  const [chatOpen, setChatOpen] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia('(min-width: 1024px)').matches) setChatOpen(true);
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
   const scrollHostRef = useRef<HTMLDivElement>(null);
   const shelfRef = useRef<HTMLDivElement>(null);
@@ -214,16 +219,16 @@ export default function Dashboard() {
   const headerLabel = navFilter !== 'all' ? NAV_LABEL[navFilter] : genre === 'All' ? 'Your shelf' : genre;
 
   return (
-    <div ref={rootRef} className="flex h-screen w-full gap-2 overflow-hidden bg-shell p-2 md:p-3">
-      <div className="flex min-w-0 flex-1 gap-2 overflow-hidden rounded-panel bg-parchment p-4 shadow-lift md:p-6">
+    <div ref={rootRef} className="flex h-screen w-full gap-2 overflow-hidden bg-shell p-2 [height:100dvh] md:p-3">
+      <div className="flex min-w-0 flex-1 gap-2 overflow-hidden rounded-panel bg-parchment p-3 shadow-lift md:p-6">
         <Sidebar active={navFilter} onPick={setNavFilter} />
 
         {/* main scrolling column */}
         <main
           ref={scrollHostRef}
-          className="h-full min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-panel px-2 md:px-4"
+          className="h-full min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-panel px-1 pb-24 md:px-4 md:pb-0"
         >
-          <div className="sticky top-0 z-10 -mx-2 bg-parchment/95 px-2 pb-4 pt-2 backdrop-blur-sm md:-mx-4 md:px-4">
+          <div className="sticky top-0 z-10 -mx-1 bg-parchment/95 px-1 pb-4 pt-2 backdrop-blur-sm md:-mx-4 md:px-4">
             <AddBar
               query={query}
               onQuery={setQuery}
@@ -350,7 +355,7 @@ export default function Dashboard() {
       />
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-5 py-2.5 text-[13px] font-bold text-parchment shadow-lift">
+        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-5 py-2.5 text-[13px] font-bold text-parchment shadow-lift md:bottom-6">
           {toast}
         </div>
       )}

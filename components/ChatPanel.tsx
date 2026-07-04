@@ -131,7 +131,10 @@ export default function ChatPanel({
   };
 
   return (
-    <aside data-intro="chat" className="relative flex w-[320px] shrink-0 flex-col rounded-panel bg-[#efe6d5] p-5 shadow-inner1">
+    <aside
+      data-intro="chat"
+      className="fixed inset-0 z-40 flex w-full flex-col bg-[#efe6d5] p-4 pb-5 lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:rounded-panel lg:p-5 lg:shadow-inner1"
+    >
       <header className="flex items-center justify-between">
         <div>
           <h2 className="text-[17px] font-extrabold">Chat</h2>

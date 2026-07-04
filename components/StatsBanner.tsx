@@ -40,11 +40,11 @@ export default function StatsBanner({ library }: { library: Series[] }) {
   ];
 
   return (
-    <section data-intro="banner" className="mt-8 grid grid-cols-[1.4fr_1fr] gap-4">
-      <div className="flex items-center gap-6 rounded-panel bg-peach/70 p-7 shadow-soft">
+    <section data-intro="banner" className="mt-8 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+      <div className="flex items-center gap-6 rounded-panel bg-peach/70 p-5 shadow-soft md:p-7">
         <BookPile />
         <div>
-          <h2 className="text-[22px] font-extrabold leading-snug">
+          <h2 className="text-[19px] font-extrabold leading-snug md:text-[22px]">
             {chapters.toLocaleString()} chapters read
             <br /> across {library.length} series
           </h2>
