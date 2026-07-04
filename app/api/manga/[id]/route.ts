@@ -32,11 +32,18 @@ export const PATCH = withErrors(async (req: NextRequest, ctx: Ctx) => {
   const allowed: (keyof Series)[] = [
     'title', 'currentChapter', 'totalChapters', 'status', 'favorite', 'genres', 'kind',
     'author', 'description', 'coverUrl', 'lastReadUrl', 'chapterUrlPattern', 'sourceUrl',
-    'startedAt', 'completedAt',
+    'startedAt', 'completedAt', 'metaStatus',
   ];
   const safe: Partial<Series> = {};
   for (const key of allowed) {
     if (key in patch) (safe as Record<string, unknown>)[key] = patch[key];
+  }
+
+  // Editing any descriptive field means the user has curated it themselves —
+  // mark it 'manual' so the UI stops nagging about blocked auto-details.
+  const metaFields: (keyof Series)[] = ['title', 'genres', 'author', 'description', 'coverUrl'];
+  if (metaFields.some((f) => f in patch) && !('metaStatus' in patch)) {
+    safe.metaStatus = 'manual';
   }
 
   if (typeof safe.currentChapter === 'number') {

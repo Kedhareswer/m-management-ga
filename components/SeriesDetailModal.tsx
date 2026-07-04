@@ -24,6 +24,60 @@ const KIND_LABEL: Record<Series['kind'], string> = {
   webtoon: 'Webtoon',
 };
 
+/** A small honesty banner: how good is this series' auto-filled metadata? */
+function MetaStatusBanner({
+  series,
+  refreshing,
+  onRefresh,
+}: {
+  series: Series;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const s = series.metaStatus;
+  if (!s || s === 'ok' || s === 'manual') return null;
+
+  const copy: Record<string, { emoji: string; title: string; body: string; tint: string }> = {
+    blocked: {
+      emoji: '🛡️',
+      title: 'The site blocked auto-details',
+      body: 'Chapter tracking & “continue reading” work fine — genres, cover and author need a manual touch below. You can retry when the site is calmer.',
+      tint: 'bg-sun/15 text-[#a8752a]',
+    },
+    unreachable: {
+      emoji: '📡',
+      title: "Couldn't reach the site",
+      body: 'Tracking still works from the link. Fill details in below, or retry the extraction.',
+      tint: 'bg-tomato/10 text-tomato',
+    },
+    partial: {
+      emoji: '🧩',
+      title: 'Only partial details',
+      body: 'We got some info but not all. Add the missing genres/author below, or retry the extraction.',
+      tint: 'bg-lav/40 text-lavdeep',
+    },
+  };
+  const c = copy[s];
+  if (!c) return null;
+
+  return (
+    <div className={`mt-4 flex items-start gap-3 rounded-blob p-3.5 ${c.tint}`}>
+      <span className="text-lg leading-none">{c.emoji}</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12.5px] font-extrabold">{c.title}</div>
+        <p className="mt-0.5 text-[11.5px] font-semibold leading-relaxed text-ink/70">{c.body}</p>
+      </div>
+      <button
+        onClick={onRefresh}
+        disabled={refreshing}
+        className="shrink-0 rounded-full bg-card px-3 py-1.5 text-[11px] font-extrabold text-ink shadow-soft transition hover:-translate-y-0.5 disabled:opacity-60"
+      >
+        {refreshing ? '…' : 'retry'}
+      </button>
+    </div>
+  );
+}
+
 function fmtDate(iso?: string): string {
   if (!iso) return '—';
   try {
@@ -135,6 +189,8 @@ export default function SeriesDetailModal({
             <CloseIcon />
           </button>
         </div>
+
+        <MetaStatusBanner series={series} refreshing={refreshing} onRefresh={refresh} />
 
         <div className="mt-5 grid gap-6 md:grid-cols-[210px_1fr]">
           {/* cover column */}

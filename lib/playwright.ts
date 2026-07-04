@@ -1,5 +1,6 @@
 import { chromium, type Browser } from 'playwright';
 import type { ExtractedMeta } from './types';
+import { detectBlock } from './botcheck';
 
 /**
  * Playwright runs inside the Next.js server itself — no separate service.
@@ -42,9 +43,20 @@ async function getBrowser(): Promise<Browser> {
 /** Render the page in headless Chromium and pull series metadata from it. */
 export async function browserExtract(url: string): Promise<Partial<ExtractedMeta>> {
   const browser = await getBrowser();
+  // A realistic browser context — proper locale, timezone and headers make
+  // us look like a real reader, which passes SOFT protection. This is not
+  // stealth/CAPTCHA-defeating; it's just not pretending to be a bare bot.
   const context = await browser.newContext({
     userAgent: UA,
     viewport: { width: 1280, height: 900 },
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    extraHTTPHeaders: {
+      'accept-language': 'en-US,en;q=0.9',
+      'sec-ch-ua': '"Chromium";v="126", "Not-A.Brand";v="24"',
+      'sec-ch-ua-platform': '"Windows"',
+      'upgrade-insecure-requests': '1',
+    },
   });
   const page = await context.newPage();
   // Skip heavy assets — we only need the DOM (images still load for cover detection).
@@ -55,8 +67,22 @@ export async function browserExtract(url: string): Promise<Partial<ExtractedMeta
   });
 
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+    const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
     await page.waitForTimeout(1500); // let client-rendered readers hydrate
+
+    // Bot-protection check. Cloudflare's passive JS challenge often clears
+    // itself after a few seconds of rendering — wait it out ONCE, no solving.
+    let block = detectBlock(await page.content(), {
+      status: resp?.status(),
+      title: await page.title().catch(() => ''),
+    });
+    if (block.blocked) {
+      await page.waitForTimeout(6000).catch(() => {});
+      block = detectBlock(await page.content(), { title: await page.title().catch(() => '') });
+      if (block.blocked) {
+        return { status: 'blocked', blockReason: block.reason, extractor: 'playwright' };
+      }
+    }
 
     const data = await page.evaluate((genreList: string[]) => {
       const meta = (sel: string) =>
@@ -171,7 +197,9 @@ export async function browserExtract(url: string): Promise<Partial<ExtractedMeta
         data.coverUrl = new URL(data.coverUrl, page.url()).toString();
       } catch {}
     }
-    return data;
+    // status ('ok' vs 'partial') is finalised in normalize() based on how
+    // many fields actually came back.
+    return { ...data, extractor: 'playwright' as const };
   } finally {
     await context.close();
   }

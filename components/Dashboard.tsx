@@ -15,6 +15,12 @@ import StatsBanner from './StatsBanner';
 import ChatPanel from './ChatPanel';
 import { ChevronIcon, RefreshIcon, LinkIcon } from './icons';
 
+export interface AddOutcome {
+  seriesId: string;
+  metaStatus?: Series['metaStatus'];
+  blockReason?: string;
+}
+
 const NAV_LABEL: Record<NavFilter, string> = {
   all: 'Your shelf',
   favorites: 'Favourites',
@@ -160,15 +166,29 @@ export default function Dashboard() {
   const isUrlQuery = /^https?:\/\/\S+$/i.test(query.trim());
 
   const addByUrl = useCallback(
-    async (url: string) => {
-      const res = await fetchJson('/api/manga', {
+    async (url: string): Promise<AddOutcome> => {
+      const res = await fetchJson<{
+        series: Series;
+        metaStatus?: Series['metaStatus'];
+        blockReason?: string;
+      }>('/api/manga', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      if (!res.ok) throw new Error(res.error || 'Extraction failed');
+      if (!res.ok || !res.data) throw new Error(res.error || 'Extraction failed');
       await refresh();
-      flash('Filed on your shelf! 🔖');
+      const outcome: AddOutcome = {
+        seriesId: res.data.series.id,
+        metaStatus: res.data.metaStatus || res.data.series.metaStatus,
+        blockReason: res.data.blockReason,
+      };
+      // Tracking always succeeds; the toast only differs on how much we could autofill.
+      if (outcome.metaStatus === 'blocked' || outcome.metaStatus === 'unreachable') {
+        flash('🔖 Tracked! The site blocked auto-details — open it to add genres/author.');
+      } else {
+        flash('Filed on your shelf! 🔖');
+      }
       requestAnimationFrame(() => {
         const cards = shelfRef.current?.querySelectorAll('[data-shelf-card]');
         const first = cards?.[0];
@@ -180,6 +200,7 @@ export default function Dashboard() {
           );
         }
       });
+      return outcome;
     },
     [refresh, flash]
   );
@@ -373,6 +394,10 @@ export default function Dashboard() {
         initialUrl={addPrefill}
         onClose={() => setAddOpen(false)}
         onAdd={addByUrl}
+        onOpenSeries={(id) => {
+          setAddOpen(false);
+          setDetailId(id);
+        }}
       />
 
       <SeriesDetailModal

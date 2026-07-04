@@ -18,15 +18,25 @@ export const POST = withErrors(async (_req: NextRequest, ctx: { params: Promise<
 
   const meta = await extractMeta(series.sourceUrl);
 
+  // On a block/unreachable re-extract, keep whatever we already had — don't
+  // overwrite good data with a failed scrape — but record the new status.
+  const blocked = meta.status === 'blocked' || meta.status === 'unreachable';
   const updated = await updateSeries(id, {
-    genres: meta.genres.length > 0 ? meta.genres : series.genres,
-    author: meta.author || series.author,
-    description: meta.description || series.description,
-    coverUrl: meta.coverUrl || series.coverUrl,
-    siteName: meta.siteName || series.siteName,
-    kind: meta.kind || series.kind,
+    genres: !blocked && meta.genres.length > 0 ? meta.genres : series.genres,
+    author: (!blocked && meta.author) || series.author,
+    description: (!blocked && meta.description) || series.description,
+    coverUrl: (!blocked && meta.coverUrl) || series.coverUrl,
+    siteName: (!blocked && meta.siteName) || series.siteName,
+    kind: (!blocked && meta.kind) || series.kind,
     chapterUrlPattern: series.chapterUrlPattern || meta.chapterUrlPattern,
+    // Don't downgrade a series the user has manually curated back to 'partial'.
+    metaStatus: series.metaStatus === 'manual' && !blocked ? 'manual' : meta.status,
   });
 
-  return NextResponse.json({ series: updated, extractor: meta.extractor });
+  return NextResponse.json({
+    series: updated,
+    extractor: meta.extractor,
+    metaStatus: meta.status,
+    blockReason: meta.blockReason,
+  });
 });

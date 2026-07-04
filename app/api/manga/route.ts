@@ -60,8 +60,12 @@ export const POST = withErrors(async (req: NextRequest) => {
     currentChapter: body.currentChapter ?? meta.detectedChapter ?? 0,
     chapterUrlPattern: meta.chapterUrlPattern,
     lastReadUrl: meta.detectedChapter ? url : undefined,
+    metaStatus: meta.status,
   };
 
   const series = await addSeries(input);
-  return NextResponse.json({ series, extractor: meta.extractor }, { status: 201 });
+  return NextResponse.json(
+    { series, extractor: meta.extractor, metaStatus: meta.status, blockReason: meta.blockReason },
+    { status: 201 }
+  );
 });

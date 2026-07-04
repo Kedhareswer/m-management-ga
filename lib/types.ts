@@ -28,6 +28,17 @@ export interface Series {
   /** Set automatically when status flips to "completed". */
   completedAt?: string;
   /**
+   * How trustworthy the auto-filled metadata is — so tracking never silently
+   * depends on a scrape succeeding:
+   *  - 'ok'         full details extracted
+   *  - 'partial'    some fields extracted, some missing
+   *  - 'blocked'    the site fought us off (Cloudflare/CAPTCHA/403) — tracking
+   *                 still works from the URL; details need manual entry
+   *  - 'unreachable' couldn't load the page at all
+   *  - 'manual'     the user edited details themselves
+   */
+  metaStatus?: 'ok' | 'partial' | 'blocked' | 'unreachable' | 'manual';
+  /**
    * Chapter URL template with "{chapter}" placeholder, detected when the
    * pasted link contained a chapter number, e.g.
    * "https://site.com/one-piece/chapter-{chapter}".
@@ -53,4 +64,8 @@ export interface ExtractedMeta {
   detectedChapter?: number;
   /** Which engine produced this: the Playwright service or the built-in fallback. */
   extractor: 'playwright' | 'fallback';
+  /** Outcome of extraction — see Series.metaStatus. */
+  status: 'ok' | 'partial' | 'blocked' | 'unreachable';
+  /** Human-readable reason when a site blocked us (Cloudflare, CAPTCHA…). */
+  blockReason?: string;
 }

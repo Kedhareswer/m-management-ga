@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { LinkIcon, PlusIcon, SparkleIcon, CloseIcon } from './icons';
+import type { AddOutcome } from './Dashboard';
 
 /**
  * The explicit "add a series" dialog. Paste-into-search was too subtle
@@ -14,20 +15,24 @@ export default function AddMangaModal({
   initialUrl = '',
   onClose,
   onAdd,
+  onOpenSeries,
 }: {
   open: boolean;
   initialUrl?: string;
   onClose: () => void;
-  onAdd: (url: string) => Promise<void>;
+  onAdd: (url: string) => Promise<AddOutcome>;
+  onOpenSeries: (id: string) => void;
 }) {
   const [url, setUrl] = useState(initialUrl);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<AddOutcome | null>(null);
 
   useEffect(() => {
     if (open) {
       setUrl(initialUrl);
       setError(null);
+      setBlocked(null);
     }
   }, [open, initialUrl]);
 
@@ -47,8 +52,14 @@ export default function AddMangaModal({
     setAdding(true);
     setError(null);
     try {
-      await onAdd(url.trim());
-      onClose();
+      const outcome = await onAdd(url.trim());
+      // Tracking always succeeded. If the site blocked auto-details, keep the
+      // dialog open to explain and offer a jump to fill things in manually.
+      if (outcome.metaStatus === 'blocked' || outcome.metaStatus === 'unreachable') {
+        setBlocked(outcome);
+      } else {
+        onClose();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not add that link');
     } finally {
@@ -86,45 +97,76 @@ export default function AddMangaModal({
           we&apos;ll pull the title, genres, cover and author automatically.
         </p>
 
-        <div className="mt-4 flex items-center gap-2 rounded-full bg-parchment px-4 py-3 shadow-inner1">
-          <LinkIcon className="shrink-0 text-lavdeep" />
-          <input
-            autoFocus
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-            placeholder="https://…"
-            className="w-full bg-transparent text-[14px] font-semibold outline-none placeholder:text-fawn/70"
-            aria-label="Manga link"
-          />
-        </div>
+        {blocked ? (
+          <div className="mt-4">
+            <div className="rounded-blob bg-sun/15 p-4">
+              <div className="text-[13px] font-extrabold text-[#a8752a]">
+                🔖 Tracked — but the site fought us off
+              </div>
+              <p className="mt-1 text-[12px] font-semibold leading-relaxed text-ink/75">
+                {blocked.blockReason ? <><span className="font-bold">{blocked.blockReason}</span> blocked auto-details. </> : 'The site blocked auto-details. '}
+                Your chapter tracking and “continue reading” still work perfectly — only the
+                genres/cover/author need a manual touch. Open the series to fill them in.
+              </p>
+            </div>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button onClick={onClose} className="rounded-full px-4 py-2.5 text-[13px] font-bold text-fawn transition hover:text-ink">
+                Done
+              </button>
+              <button
+                onClick={() => {
+                  onOpenSeries(blocked.seriesId);
+                  onClose();
+                }}
+                className="rounded-full bg-lavdeep px-5 py-2.5 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+              >
+                Open &amp; edit details →
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 flex items-center gap-2 rounded-full bg-parchment px-4 py-3 shadow-inner1">
+              <LinkIcon className="shrink-0 text-lavdeep" />
+              <input
+                autoFocus
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submit()}
+                placeholder="https://…"
+                className="w-full bg-transparent text-[14px] font-semibold outline-none placeholder:text-fawn/70"
+                aria-label="Manga link"
+              />
+            </div>
 
-        {error && <p className="mt-2.5 text-[12px] font-bold text-tomato">{error}</p>}
+            {error && <p className="mt-2.5 text-[12px] font-bold text-tomato">{error}</p>}
 
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-full px-4 py-2.5 text-[13px] font-bold text-fawn transition hover:text-ink"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={!isUrl || adding}
-            className="flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift disabled:cursor-default disabled:opacity-60"
-            style={{ background: 'linear-gradient(90deg, #f2b64c 0%, #7fb69a 45%, #8f7fd4 100%)' }}
-          >
-            {adding ? (
-              <>
-                <SparkleIcon className="animate-spin" /> extracting…
-              </>
-            ) : (
-              <>
-                <PlusIcon /> add to shelf
-              </>
-            )}
-          </button>
-        </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={onClose}
+                className="rounded-full px-4 py-2.5 text-[13px] font-bold text-fawn transition hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submit}
+                disabled={!isUrl || adding}
+                className="flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift disabled:cursor-default disabled:opacity-60"
+                style={{ background: 'linear-gradient(90deg, #f2b64c 0%, #7fb69a 45%, #8f7fd4 100%)' }}
+              >
+                {adding ? (
+                  <>
+                    <SparkleIcon className="animate-spin" /> extracting…
+                  </>
+                ) : (
+                  <>
+                    <PlusIcon /> add to shelf
+                  </>
+                )}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
