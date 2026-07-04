@@ -79,11 +79,27 @@ docker run -p 3000:3000 -v mangashelf-data:/data mangashelf
 Chromium is baked into the image; your library persists in the
 `mangashelf-data` volume.
 
+### Storage: Neon Postgres (recommended) or a local JSON file
+
+Set `DATABASE_URL` (e.g. in `.env.local`) to a
+[Neon](https://neon.tech) Postgres connection string and your library +
+chat memory live in Postgres — persistent across restarts and deploys,
+no schema setup needed (tables are created automatically on first use).
+Without it, everything is stored in a local JSON file under `DATA_DIR`,
+which is fine for a single machine.
+
+```bash
+# .env.local  (gitignored — never commit credentials)
+DATABASE_URL=postgresql://user:password@your-host.neon.tech/neondb?sslmode=require
+```
+
 ### Environment variables
 
 | Variable               | Default                          | Purpose                                        |
 | ---------------------- | -------------------------------- | ---------------------------------------------- |
-| `DATA_DIR`             | `./data`                         | Library, chat memory and cover cache           |
+| `DATABASE_URL`         | unset                            | Neon Postgres — enables database storage       |
+| `NEON_FETCH_ENDPOINT`  | Neon's own                       | Point the driver at a local Neon HTTP proxy    |
+| `DATA_DIR`             | `./data`                         | Library, chat memory and cover cache (file mode) |
 | `AI_MODEL`             | `google/gemma-4-31b-it`          | Default LLM model when a Requesty key is set   |
 | `REQUESTY_BASE_URL`    | `https://router.requesty.ai/v1`  | OpenAI-compatible router endpoint              |
 | `MEMORY_MAX_MESSAGES`  | `40`                             | Compaction trigger for chat memory             |
@@ -99,7 +115,8 @@ supplied per browser session in the chat settings, never via env or disk.
 - **Next.js 15** (App Router, TypeScript) + **Tailwind CSS**
 - **GSAP** for motion, **Lenis** for smooth scrolling
 - **Playwright** embedded in the server for extraction & cover fetching
-- JSON file storage — zero database setup, your shelf is one readable file
+- **Neon Postgres** storage via `@neondatabase/serverless` (set
+  `DATABASE_URL`), with a zero-setup JSON-file fallback for local dev
 
 ## 🗺️ How the chapter redirect works
 
