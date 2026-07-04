@@ -4,20 +4,21 @@ import { answer } from '@/lib/bot';
 import { llmAnswer } from '@/lib/agent';
 import { DEFAULT_MODEL, type AIConfig } from '@/lib/ai';
 import { appendMessages, clearMemory, compactIfNeeded, loadMemory } from '@/lib/memory';
+import { withErrors } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
 /** GET /api/chat — the persisted conversation, so the panel restores on reload. */
-export async function GET() {
+export const GET = withErrors(async () => {
   const mem = await loadMemory();
   return NextResponse.json({ summary: mem.summary, messages: mem.messages });
-}
+});
 
 /** DELETE /api/chat — wipe Mango's memory (transcript + compacted notes). */
-export async function DELETE() {
+export const DELETE = withErrors(async () => {
   await clearMemory();
   return NextResponse.json({ ok: true });
-}
+});
 
 /**
  * POST /api/chat { message }
@@ -30,7 +31,7 @@ export async function DELETE() {
  * Either way the exchange is appended to persistent memory and the
  * transcript is compacted when it grows long.
  */
-export async function POST(req: NextRequest) {
+export const POST = withErrors(async (req: NextRequest) => {
   let body: { message?: string };
   try {
     body = await req.json();
@@ -78,4 +79,4 @@ export async function POST(req: NextRequest) {
   await compactIfNeeded(ai);
 
   return NextResponse.json({ ...reply, provider });
-}
+});

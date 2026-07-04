@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import Lenis from 'lenis';
 import type { Series } from '@/lib/types';
+import { fetchJson } from '@/lib/fetchJson';
 import Sidebar, { type NavFilter } from './Sidebar';
 import AddBar from './AddBar';
 import AddMangaModal from './AddMangaModal';
@@ -41,16 +42,22 @@ export default function Dashboard() {
     setTimeout(() => setToast(null), 3200);
   }, []);
 
+  const storageWarned = useRef(false);
+
   const refresh = useCallback(async () => {
-    try {
-      const res = await fetch('/api/manga', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);
-      const data = await res.json();
-      setLibrary(data);
-      setLoadError(null);
-    } catch (err) {
+    const res = await fetchJson<Series[]>('/api/manga', { cache: 'no-store' });
+    if (!res.ok || !Array.isArray(res.data)) {
       // Never leave the UI stuck on the loading skeleton — show a real error.
-      setLoadError(err instanceof Error ? err.message : 'Could not load your shelf');
+      setLoadError(res.error || 'Could not load your shelf');
+      return;
+    }
+    setLibrary(res.data);
+    setLoadError(null);
+    // Storage fell back to non-persistent memory (read-only data dir)? Say so once.
+    if (res.headers?.get('x-storage-mode') === 'memory' && !storageWarned.current) {
+      storageWarned.current = true;
+      setToast('⚠️ Data folder is not writable — changes won’t survive a restart (set DATA_DIR)');
+      setTimeout(() => setToast(null), 8000);
     }
   }, []);
 
@@ -83,20 +90,34 @@ export default function Dashboard() {
   useEffect(() => {
     if ((!library && !loadError) || introPlayed.current || !rootRef.current) return;
     introPlayed.current = true;
+    const root = rootRef.current;
     const ctx = gsap.context(() => {
-      gsap.set('[data-intro]', { opacity: 0 });
+      // Only animate targets that exist — empty/error states have no cards
+      // or banner, and GSAP logs "target not found" for missing selectors.
+      const pick = (sel: string) => Array.from(root.querySelectorAll(sel));
       const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
-      tl.fromTo('[data-intro="sidebar"]', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 })
-        .fromTo('[data-intro="addbar"]', { y: -24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, '-=0.3')
-        .fromTo('[data-intro="chips"]', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45 }, '-=0.25')
-        .fromTo(
-          '[data-shelf-card]',
-          { y: 36, opacity: 0, rotate: -2 },
-          { y: 0, opacity: 1, rotate: 0, duration: 0.55, stagger: 0.08, ease: 'back.out(1.4)' },
-          '-=0.2'
-        )
-        .fromTo('[data-intro="banner"]', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, '-=0.3')
-        .fromTo('[data-intro="chat"]', { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 }, '-=0.4');
+      const step = (
+        sel: string,
+        from: gsap.TweenVars,
+        to: gsap.TweenVars,
+        pos?: string
+      ) => {
+        const els = pick(sel);
+        if (els.length === 0) return;
+        gsap.set(els, { opacity: 0 });
+        tl.fromTo(els, from, to, pos);
+      };
+      step('[data-intro="sidebar"]', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 });
+      step('[data-intro="addbar"]', { y: -24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, '-=0.3');
+      step('[data-intro="chips"]', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45 }, '-=0.25');
+      step(
+        '[data-shelf-card]',
+        { y: 36, opacity: 0, rotate: -2 },
+        { y: 0, opacity: 1, rotate: 0, duration: 0.55, stagger: 0.08, ease: 'back.out(1.4)' },
+        '-=0.2'
+      );
+      step('[data-intro="banner"]', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, '-=0.3');
+      step('[data-intro="chat"]', { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 }, '-=0.4');
     }, rootRef);
     return () => ctx.revert();
   }, [library, loadError]);
@@ -133,13 +154,12 @@ export default function Dashboard() {
 
   const addByUrl = useCallback(
     async (url: string) => {
-      const res = await fetch('/api/manga', {
+      const res = await fetchJson('/api/manga', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Extraction failed');
+      if (!res.ok) throw new Error(res.error || 'Extraction failed');
       await refresh();
       flash('Filed on your shelf! 🔖');
       requestAnimationFrame(() => {

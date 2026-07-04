@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import type { Series } from '@/lib/types';
 import type { BotReply } from '@/lib/bot';
+import { fetchJson } from '@/lib/fetchJson';
 import BookCover from './BookCover';
 import { SendIcon, ChevronIcon, CloseIcon, GearIcon, KeyIcon, TrashIcon } from './icons';
 
@@ -59,16 +60,16 @@ export default function ChatPanel({
   // Restore the persisted conversation (Mango's memory) on mount.
   useEffect(() => {
     (async () => {
-      try {
-        const res = await fetch('/api/chat', { cache: 'no-store' });
-        const data = await res.json();
-        const restored: Message[] = (data.messages || []).map(
-          (m: { from: 'user' | 'bot'; text: string }) => ({ id: nextId++, from: m.from, text: m.text })
-        );
-        setMessages(restored.length > 0 ? restored : OPENERS.map((m) => ({ ...m, id: nextId++ })));
-      } catch {
-        setMessages(OPENERS.map((m) => ({ ...m, id: nextId++ })));
-      }
+      const res = await fetchJson<{ messages?: { from: 'user' | 'bot'; text: string }[] }>(
+        '/api/chat',
+        { cache: 'no-store' }
+      );
+      const restored: Message[] = (res.data?.messages || []).map((m) => ({
+        id: nextId++,
+        from: m.from,
+        text: m.text,
+      }));
+      setMessages(restored.length > 0 ? restored : OPENERS.map((m) => ({ ...m, id: nextId++ })));
     })();
   }, []);
 
@@ -99,21 +100,25 @@ export default function ChatPanel({
         headers['x-ai-key'] = aiKey;
         headers['x-ai-model'] = aiModel;
       }
-      const res = await fetch('/api/chat', {
+      const res = await fetchJson<BotReply & { provider?: string }>('/api/chat', {
         method: 'POST',
         headers,
         body: JSON.stringify({ message: text }),
       });
-      const reply: BotReply & { provider?: string } = await res.json();
+      if (!res.ok || !res.data) {
+        throw new Error(res.error || 'Chat failed');
+      }
+      const reply = res.data;
       setMessages((m) => [
         ...m,
         { id: nextId++, from: 'bot', text: reply.text, series: reply.series, link: reply.link },
       ]);
       if (reply.action === 'updated-chapter') onLibraryChange();
-    } catch {
+    } catch (err) {
+      const detail = err instanceof Error ? ` (${err.message.slice(0, 120)})` : '';
       setMessages((m) => [
         ...m,
-        { id: nextId++, from: 'bot', text: 'My ink spilled — try that again in a second! 🫙' },
+        { id: nextId++, from: 'bot', text: `My ink spilled${detail} — try that again in a second! 🫙` },
       ]);
     } finally {
       setThinking(false);

@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { chatComplete, type AIConfig } from './ai';
+import { withTimeout } from './timeout';
 
 /**
  * Agent memory for Mango. The full conversation is persisted to disk so
@@ -29,9 +30,14 @@ const FILE = path.join(DATA_DIR, 'chat-memory.json');
 const MAX_MESSAGES = Number(process.env.MEMORY_MAX_MESSAGES) || 40;
 const KEEP_RECENT = Number(process.env.MEMORY_KEEP_RECENT) || 12;
 
+// In-memory fallback mirrors lib/store.ts: an unwritable data dir must
+// degrade to non-persistent memory, never crash the chat.
+const g = globalThis as typeof globalThis & { __mangaMemChat?: ChatMemory };
+
 let writeChain: Promise<unknown> = Promise.resolve();
 
 export async function loadMemory(): Promise<ChatMemory> {
+  if (g.__mangaMemChat) return g.__mangaMemChat;
   try {
     const raw = await fs.readFile(FILE, 'utf8');
     const parsed = JSON.parse(raw);
@@ -45,11 +51,28 @@ export async function loadMemory(): Promise<ChatMemory> {
 }
 
 async function saveMemory(mem: ChatMemory): Promise<void> {
+  if (g.__mangaMemChat) {
+    g.__mangaMemChat = mem;
+    return;
+  }
   writeChain = writeChain.then(async () => {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    const tmp = FILE + '.tmp';
-    await fs.writeFile(tmp, JSON.stringify(mem, null, 2), 'utf8');
-    await fs.rename(tmp, FILE);
+    try {
+      await withTimeout(
+        (async () => {
+          await fs.mkdir(DATA_DIR, { recursive: true });
+          const tmp = FILE + '.tmp';
+          await fs.writeFile(tmp, JSON.stringify(mem, null, 2), 'utf8');
+          await fs.rename(tmp, FILE);
+        })(),
+        4000,
+        'chat memory write'
+      );
+    } catch (err) {
+      console.warn(
+        `[memory] Cannot write ${FILE} (${err instanceof Error ? err.message : err}) — chat memory is in-memory only for this run.`
+      );
+      g.__mangaMemChat = mem;
+    }
   });
   await writeChain;
 }

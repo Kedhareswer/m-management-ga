@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
 import { browserFetchImage } from '@/lib/playwright';
+import { withErrors } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ const MAX_BYTES = 8 * 1024 * 1024;
  * Referer; if the site still refuses, the in-app Playwright browser fetches
  * it through a real browser context. Successful covers are cached on disk.
  */
-export async function GET(req: NextRequest) {
+export const GET = withErrors(async (req: NextRequest) => {
   const url = req.nextUrl.searchParams.get('url');
   const ref = req.nextUrl.searchParams.get('ref') || undefined;
 
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
   } catch {}
 
   return imageResponse(fetched.body, fetched.type);
-}
+});
 
 interface Fetched {
   body: Buffer;

@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listSeries, addSeries } from '@/lib/store';
+import { listSeries, addSeries, storageMode } from '@/lib/store';
 import { extractMeta } from '@/lib/extract';
+import { withErrors } from '@/lib/api';
 import type { Series } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export const GET = withErrors(async () => {
   const series = await listSeries();
-  return NextResponse.json(series);
-}
+  return NextResponse.json(series, {
+    // Lets the UI warn when storage fell back to non-persistent memory.
+    headers: { 'x-storage-mode': storageMode() },
+  });
+});
 
 /**
  * POST /api/manga
  * { url: string, currentChapter?: number }  — extracts metadata and adds the series
  */
-export async function POST(req: NextRequest) {
+export const POST = withErrors(async (req: NextRequest) => {
   let body: { url?: string; currentChapter?: number };
   try {
     body = await req.json();
@@ -59,4 +63,4 @@ export async function POST(req: NextRequest) {
 
   const series = await addSeries(input);
   return NextResponse.json({ series, extractor: meta.extractor }, { status: 201 });
-}
+});

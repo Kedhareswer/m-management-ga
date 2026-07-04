@@ -1,25 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeries, updateSeries, deleteSeries } from '@/lib/store';
 import { detectChapterPattern } from '@/lib/chapterUrl';
+import { withErrors } from '@/lib/api';
 import type { Series } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, ctx: Ctx) {
+export const GET = withErrors(async (_req: NextRequest, ctx: Ctx) => {
   const { id } = await ctx.params;
   const series = await getSeries(id);
   if (!series) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(series);
-}
+});
 
 /**
  * PATCH /api/manga/[id]
  * Accepts partial updates: currentChapter, status, genres, title, lastReadUrl...
  * If lastReadUrl is sent, we also re-detect the chapter pattern from it.
  */
-export async function PATCH(req: NextRequest, ctx: Ctx) {
+export const PATCH = withErrors(async (req: NextRequest, ctx: Ctx) => {
   const { id } = await ctx.params;
   let patch: Partial<Series>;
   try {
@@ -52,11 +53,11 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const updated = await updateSeries(id, safe);
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(updated);
-}
+});
 
-export async function DELETE(_req: NextRequest, ctx: Ctx) {
+export const DELETE = withErrors(async (_req: NextRequest, ctx: Ctx) => {
   const { id } = await ctx.params;
   const ok = await deleteSeries(id);
   if (!ok) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
-}
+});
