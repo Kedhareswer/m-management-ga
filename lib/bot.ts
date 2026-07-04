@@ -141,7 +141,7 @@ export function answer(message: string, library: Series[]): {
   };
 }
 
-function findSeries(query: string, library: Series[]): Series | undefined {
+export function findSeries(query: string, library: Series[]): Series | undefined {
   const q = query.toLowerCase().replace(/["'“”]/g, '').trim();
   if (!q) return undefined;
   return (

@@ -29,13 +29,27 @@ scrolling — and **Mango**, the little chat assistant in the right panel.
   to type it) and **Continue reading** redirects you straight to that chapter.
 - **Genre shelves.** Genres are auto-extracted and become the book-shaped
   filter tabs across the top — click one to see just that shelf.
-- **Mango the chat assistant.** Right-hand chat panel, like a book-store
-  concierge:
+- **Mango the chat assistant — now with a real LLM brain.** Right-hand chat
+  panel, like a book-store concierge:
   - `what am I reading?` — your in-progress shelf, with mini covers
   - `update One Piece to chapter 1100` — moves your bookmark
   - `continue Solo Leveling` — link straight to your chapter
   - `recommend fantasy` — picks something from your shelf
   - `stats` — chapters read, genres explored
+- **Requesty LLM provider (default: `google/gemma-4-31b-it`).** Open ⚙ in the
+  chat header and paste your [Requesty](https://requesty.ai) API key — the key
+  is **session-based**: it lives in the browser's sessionStorage, travels
+  per-request in a header, and is never stored on the server. With a key,
+  Mango answers via the LLM and acts on your shelf through a JSON action
+  protocol (update chapters, change status, star favourites, hand you the
+  continue-reading link). Without a key — or if the call fails — the built-in
+  rules brain answers, so chat always works.
+- **Agent memory with compaction.** The conversation is persisted server-side
+  (`DATA_DIR/chat-memory.json`) and restored when you come back. When the
+  transcript grows past `MEMORY_MAX_MESSAGES` (default 40), older messages are
+  folded into a rolling summary — by the LLM when a key is present, by a
+  heuristic digest otherwise — and that summary is fed back into Mango's
+  system prompt. Clear it any time with the 🗑 button in the chat header.
 - **Motion design.** GSAP entrance choreography, popping cards, swaying
   bookmark ribbons, Lenis buttery scrolling.
 
@@ -67,11 +81,18 @@ Chromium is baked into the image; your library persists in the
 
 ### Environment variables
 
-| Variable             | Default            | Purpose                                        |
-| -------------------- | ------------------ | ---------------------------------------------- |
-| `DATA_DIR`           | `./data`           | Folder for `library.json` and the cover cache  |
-| `CHROMIUM_PATH`      | Playwright's own   | Use a pre-installed Chromium binary            |
-| `DISABLE_PLAYWRIGHT` | unset              | Set to `1` to force the lightweight extractor  |
+| Variable               | Default                          | Purpose                                        |
+| ---------------------- | -------------------------------- | ---------------------------------------------- |
+| `DATA_DIR`             | `./data`                         | Library, chat memory and cover cache           |
+| `AI_MODEL`             | `google/gemma-4-31b-it`          | Default LLM model when a Requesty key is set   |
+| `REQUESTY_BASE_URL`    | `https://router.requesty.ai/v1`  | OpenAI-compatible router endpoint              |
+| `MEMORY_MAX_MESSAGES`  | `40`                             | Compaction trigger for chat memory             |
+| `MEMORY_KEEP_RECENT`   | `12`                             | Messages kept verbatim after compaction        |
+| `CHROMIUM_PATH`        | Playwright's own                 | Use a pre-installed Chromium binary            |
+| `DISABLE_PLAYWRIGHT`   | unset                            | Set to `1` to force the lightweight extractor  |
+
+There is no login: this is a single-user app by design. The Requesty key is
+supplied per browser session in the chat settings, never via env or disk.
 
 ## 🧱 Stack
 

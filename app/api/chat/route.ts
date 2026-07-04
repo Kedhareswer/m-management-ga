@@ -1,13 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listSeries, updateSeries } from '@/lib/store';
 import { answer } from '@/lib/bot';
+import { llmAnswer } from '@/lib/agent';
+import { DEFAULT_MODEL, type AIConfig } from '@/lib/ai';
+import { appendMessages, clearMemory, compactIfNeeded, loadMemory } from '@/lib/memory';
 
 export const dynamic = 'force-dynamic';
 
+/** GET /api/chat — the persisted conversation, so the panel restores on reload. */
+export async function GET() {
+  const mem = await loadMemory();
+  return NextResponse.json({ summary: mem.summary, messages: mem.messages });
+}
+
+/** DELETE /api/chat — wipe Mango's memory (transcript + compacted notes). */
+export async function DELETE() {
+  await clearMemory();
+  return NextResponse.json({ ok: true });
+}
+
 /**
- * POST /api/chat { message: string }
- * Mango the shelf assistant. If the message asks for a chapter update,
- * the update is applied before replying.
+ * POST /api/chat { message }
+ *
+ * Provider selection per request:
+ * - `x-ai-key` header present → Requesty (default model google/gemma-4-31b-it,
+ *   overridable via `x-ai-model`). The key is session-based and never stored.
+ * - no key → the built-in rule-based Mango, so chat always works.
+ *
+ * Either way the exchange is appended to persistent memory and the
+ * transcript is compacted when it grows long.
  */
 export async function POST(req: NextRequest) {
   let body: { message?: string };
@@ -21,12 +42,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Say something!' }, { status: 400 });
   }
 
-  const library = await listSeries();
-  const { reply, update } = answer(message, library);
+  const apiKey = req.headers.get('x-ai-key')?.trim() || '';
+  const model = req.headers.get('x-ai-model')?.trim() || DEFAULT_MODEL;
+  const ai: AIConfig | undefined = apiKey ? { apiKey, model } : undefined;
 
-  if (update) {
-    await updateSeries(update.id, { currentChapter: update.currentChapter });
+  const [library, memory] = await Promise.all([listSeries(), loadMemory()]);
+
+  let reply;
+  let provider: 'requesty' | 'rules' = 'rules';
+
+  if (ai) {
+    try {
+      reply = await llmAnswer(ai, message, library, memory.summary, memory.messages);
+      provider = 'requesty';
+    } catch (err) {
+      // Surface the failure, then still answer with the built-in brain.
+      const detail = err instanceof Error ? err.message : 'unknown error';
+      const { reply: fallback, update } = answer(message, library);
+      if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
+      reply = {
+        ...fallback,
+        text: `⚠️ Requesty call failed (${detail.slice(0, 160)}) — answering with my built-in brain instead.\n\n${fallback.text}`,
+      };
+    }
+  } else {
+    const { reply: ruleReply, update } = answer(message, library);
+    if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
+    reply = ruleReply;
   }
 
-  return NextResponse.json(reply);
+  await appendMessages([
+    { from: 'user', text: message },
+    { from: 'bot', text: reply.text },
+  ]);
+  await compactIfNeeded(ai);
+
+  return NextResponse.json({ ...reply, provider });
 }

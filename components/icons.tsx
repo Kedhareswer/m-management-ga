@@ -126,6 +126,20 @@ export const CloseIcon = (p: P) => (
   </svg>
 );
 
+export const GearIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={16} height={16} {...base} {...p}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2.1-1.2L14 3h-4l-.5 2.7a7 7 0 0 0-2.1 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2.1 1.2L10 21h4l.5-2.7a7 7 0 0 0 2.1-1.2l2.3 1 2-3.4-2-1.5c.07-.4.1-.8.1-1.2Z" />
+  </svg>
+);
+
+export const KeyIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={16} height={16} {...base} {...p}>
+    <circle cx="8" cy="15" r="4" />
+    <path d="m11 12 9-9M17 6l3 3M14 9l2 2" />
+  </svg>
+);
+
 export const RefreshIcon = (p: P) => (
   <svg viewBox="0 0 24 24" width={18} height={18} {...base} {...p}>
     <path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" />

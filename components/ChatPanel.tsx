@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import type { Series } from '@/lib/types';
 import type { BotReply } from '@/lib/bot';
 import BookCover from './BookCover';
-import { SendIcon, ClipIcon, ChevronIcon, CloseIcon } from './icons';
+import { SendIcon, ChevronIcon, CloseIcon, GearIcon, KeyIcon, TrashIcon } from './icons';
 
 interface Message {
   id: number;
@@ -17,12 +17,13 @@ interface Message {
 
 let nextId = 1;
 
-const OPENERS: Message[] = [
-  { id: nextId++, from: 'bot', text: 'Good day! 🍊' },
+const DEFAULT_MODEL = 'google/gemma-4-31b-it';
+
+const OPENERS: Omit<Message, 'id'>[] = [
+  { from: 'bot', text: 'Good day! 🍊' },
   {
-    id: nextId++,
     from: 'bot',
-    text: "I'm Mango, your shelf keeper. Ask me “what am I reading?” or tell me “update One Piece to chapter 1100” and I'll move your bookmark.",
+    text: "I'm Mango, your shelf keeper. Ask me “what am I reading?” or tell me “update One Piece to chapter 1100” and I'll move your bookmark. Add a Requesty key in ⚙ settings and I get a real brain!",
   },
 ];
 
@@ -33,10 +34,43 @@ export default function ChatPanel({
   onLibraryChange: () => void;
   onClose: () => void;
 }) {
-  const [messages, setMessages] = useState<Message[]>(OPENERS);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiKey, setAiKey] = useState('');
+  const [aiModel, setAiModel] = useState(DEFAULT_MODEL);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Session-based key: lives in sessionStorage only, pasted once per session.
+  useEffect(() => {
+    setAiKey(sessionStorage.getItem('requesty-key') || '');
+    setAiModel(sessionStorage.getItem('requesty-model') || DEFAULT_MODEL);
+  }, []);
+
+  const saveSettings = useCallback((key: string, model: string) => {
+    sessionStorage.setItem('requesty-key', key.trim());
+    sessionStorage.setItem('requesty-model', model.trim() || DEFAULT_MODEL);
+    setAiKey(key.trim());
+    setAiModel(model.trim() || DEFAULT_MODEL);
+    setSettingsOpen(false);
+  }, []);
+
+  // Restore the persisted conversation (Mango's memory) on mount.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/chat', { cache: 'no-store' });
+        const data = await res.json();
+        const restored: Message[] = (data.messages || []).map(
+          (m: { from: 'user' | 'bot'; text: string }) => ({ id: nextId++, from: m.from, text: m.text })
+        );
+        setMessages(restored.length > 0 ? restored : OPENERS.map((m) => ({ ...m, id: nextId++ })));
+      } catch {
+        setMessages(OPENERS.map((m) => ({ ...m, id: nextId++ })));
+      }
+    })();
+  }, []);
 
   // Animate each new bubble in with a soft pop.
   useEffect(() => {
@@ -60,12 +94,17 @@ export default function ChatPanel({
     setMessages((m) => [...m, { id: nextId++, from: 'user', text }]);
     setThinking(true);
     try {
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (aiKey) {
+        headers['x-ai-key'] = aiKey;
+        headers['x-ai-model'] = aiModel;
+      }
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers,
         body: JSON.stringify({ message: text }),
       });
-      const reply: BotReply = await res.json();
+      const reply: BotReply & { provider?: string } = await res.json();
       setMessages((m) => [
         ...m,
         { id: nextId++, from: 'bot', text: reply.text, series: reply.series, link: reply.link },
@@ -81,24 +120,53 @@ export default function ChatPanel({
     }
   };
 
+  const clearChat = async () => {
+    await fetch('/api/chat', { method: 'DELETE' });
+    setMessages(OPENERS.map((m) => ({ ...m, id: nextId++ })));
+  };
+
   return (
-    <aside data-intro="chat" className="flex w-[320px] shrink-0 flex-col rounded-panel bg-[#efe6d5] p-5 shadow-inner1">
+    <aside data-intro="chat" className="relative flex w-[320px] shrink-0 flex-col rounded-panel bg-[#efe6d5] p-5 shadow-inner1">
       <header className="flex items-center justify-between">
-        <h2 className="text-[17px] font-extrabold">Chat</h2>
-        <button
-          onClick={onClose}
-          className="icon-btn !h-8 !w-8"
-          title="Hide chat"
-          aria-label="Hide chat"
-        >
-          <CloseIcon />
-        </button>
+        <div>
+          <h2 className="text-[17px] font-extrabold">Chat</h2>
+          <p className="text-[10px] font-bold text-fawn" title={aiKey ? `Model: ${aiModel} via Requesty` : 'No API key — using the built-in rules brain'}>
+            {aiKey ? `🧠 ${aiModel.split('/').pop()} · Requesty` : '📏 built-in rules · no key'}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setSettingsOpen((v) => !v)}
+            className={`icon-btn !h-8 !w-8 ${settingsOpen ? '!text-lavdeep ring-2 ring-lavdeep/25' : ''}`}
+            title="AI settings (Requesty key & model)"
+            aria-label="AI settings"
+          >
+            <GearIcon />
+          </button>
+          <button onClick={clearChat} className="icon-btn !h-8 !w-8" title="Clear chat & memory" aria-label="Clear chat and memory">
+            <TrashIcon />
+          </button>
+          <button onClick={onClose} className="icon-btn !h-8 !w-8" title="Hide chat" aria-label="Hide chat">
+            <CloseIcon />
+          </button>
+        </div>
       </header>
+
+      {settingsOpen && (
+        <SettingsCard
+          initialKey={aiKey}
+          initialModel={aiModel}
+          onSave={saveSettings}
+          onCancel={() => setSettingsOpen(false)}
+        />
+      )}
 
       <button className="mt-4 flex items-center gap-3 rounded-blob bg-card px-4 py-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift">
         <div>
           <div className="text-[13px] font-extrabold">Privacy and Support</div>
-          <div className="text-[11px] font-semibold text-fawn">Everything stays on your device</div>
+          <div className="text-[11px] font-semibold text-fawn">
+            Key lives only in this browser session
+          </div>
         </div>
         <ChevronIcon className="ml-auto shrink-0 text-fawn" />
       </button>
@@ -159,9 +227,6 @@ export default function ChatPanel({
       </div>
 
       <div className="mt-4 flex items-center gap-2">
-        <button className="icon-btn !h-10 !w-10 shrink-0" title="Attach" aria-label="Attach">
-          <ClipIcon />
-        </button>
         <div className="flex h-11 flex-1 items-center rounded-full bg-card px-4 shadow-soft">
           <input
             value={input}
@@ -182,5 +247,58 @@ export default function ChatPanel({
         </button>
       </div>
     </aside>
+  );
+}
+
+function SettingsCard({
+  initialKey,
+  initialModel,
+  onSave,
+  onCancel,
+}: {
+  initialKey: string;
+  initialModel: string;
+  onSave: (key: string, model: string) => void;
+  onCancel: () => void;
+}) {
+  const [key, setKey] = useState(initialKey);
+  const [model, setModel] = useState(initialModel);
+
+  return (
+    <div className="mt-3 rounded-blob bg-card p-4 shadow-soft">
+      <div className="flex items-center gap-2 text-[13px] font-extrabold">
+        <KeyIcon className="text-lavdeep" /> Requesty (session only)
+      </div>
+      <p className="mt-1 text-[10.5px] font-semibold leading-relaxed text-fawn">
+        Paste your Requesty API key — it stays in this browser session and is
+        never saved on the server. Leave empty to use the built-in rules brain.
+      </p>
+      <input
+        type="password"
+        value={key}
+        onChange={(e) => setKey(e.target.value)}
+        placeholder="sk-…"
+        className="mt-2.5 w-full rounded-full bg-parchment px-4 py-2 text-[12px] font-semibold shadow-inner1 outline-none placeholder:text-fawn/60"
+        aria-label="Requesty API key"
+      />
+      <input
+        value={model}
+        onChange={(e) => setModel(e.target.value)}
+        placeholder={DEFAULT_MODEL}
+        className="mt-2 w-full rounded-full bg-parchment px-4 py-2 text-[12px] font-semibold shadow-inner1 outline-none placeholder:text-fawn/60"
+        aria-label="Model"
+      />
+      <div className="mt-3 flex justify-end gap-2">
+        <button onClick={onCancel} className="rounded-full px-3 py-1.5 text-[11.5px] font-bold text-fawn transition hover:text-ink">
+          cancel
+        </button>
+        <button
+          onClick={() => onSave(key, model)}
+          className="rounded-full bg-lavdeep px-4 py-1.5 text-[11.5px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5"
+        >
+          save
+        </button>
+      </div>
+    </div>
   );
 }
