@@ -82,3 +82,50 @@ export async function webFetchContent(url: string): Promise<FetchedPage | null> 
     text,
   };
 }
+
+export interface PageHead {
+  title?: string;
+  /** og:image / twitter:image — for reader pages this is usually the cover. */
+  ogImage?: string;
+  /** First content images on the page, as a fallback cover source. */
+  imageLinks: string[];
+}
+
+/**
+ * Fetch just enough of a page (via TinyFish, their infrastructure) to pull
+ * cover art: the <head> meta tags plus the page's image links.
+ */
+export async function webFetchHead(url: string): Promise<PageHead | null> {
+  if (!webSearchEnabled()) return null;
+  const response = await getClient().fetch.getContents({
+    urls: [url],
+    format: FetchFormat.Html,
+    include_html_head: true,
+    image_links: true,
+  });
+  const page = response.results[0];
+  if (!page) return null;
+  const html = 'text' in page && typeof page.text === 'string' ? page.text : '';
+  const meta = (name: string): string | undefined => {
+    const re = new RegExp(
+      `<meta[^>]+(?:property|name)=["']${name}["'][^>]*content=["']([^"']+)["']|<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${name}["']`,
+      'i'
+    );
+    const m = html.match(re);
+    return m ? (m[1] || m[2]) : undefined;
+  };
+  const ogImage = meta('og:image') || meta('twitter:image');
+  return {
+    title: page.title ?? undefined,
+    ogImage: ogImage ? absolutize(ogImage, url) : undefined,
+    imageLinks: (page.image_links ?? []).filter((u) => /^https?:\/\//i.test(u)).slice(0, 5),
+  };
+}
+
+function absolutize(src: string, base: string): string | undefined {
+  try {
+    return new URL(src, base).toString();
+  } catch {
+    return undefined;
+  }
+}

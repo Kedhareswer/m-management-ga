@@ -5,6 +5,7 @@ import { continueUrl } from './chapterUrl';
 import { updateSeries } from './store';
 import { chatComplete, type AIConfig } from './ai';
 import { webSearch, webSearchEnabled, type WebResult } from './websearch';
+import { recommendSeries, type Recommendation } from './recommend';
 import type { StoredMessage } from './memory';
 
 /**
@@ -15,7 +16,7 @@ import type { StoredMessage } from './memory';
  */
 
 interface AgentAction {
-  type: 'update_chapter' | 'set_status' | 'set_favorite' | 'open' | 'web_search';
+  type: 'update_chapter' | 'set_status' | 'set_favorite' | 'open' | 'web_search' | 'recommend';
   title?: string;
   chapter?: number;
   status?: Series['status'];
@@ -25,10 +26,13 @@ interface AgentAction {
 
 function systemPrompt(): string {
   const webSearchDoc = webSearchEnabled()
-    ? '\n- {"type":"web_search","query":"<search query>"} — when the user wants a recommendation ' +
-      "beyond what's on the shelf, search the web for it. You'll get results back and a chance to " +
-      'give your real answer using them — so when you use this action, keep "reply" short (e.g. ' +
-      '"Let me look that up…") since it will be replaced.'
+    ? '\n- {"type":"recommend","query":"<what kind of series they want, e.g. \'dark murim manhwa\'>"} — ' +
+      'ALWAYS use this when the user asks what to read next / wants recommendations beyond their shelf. ' +
+      'A dedicated pipeline searches the web, picks real series with covers and reader links, and ' +
+      'composes the reply — so keep your own "reply" short (e.g. "On it…"), it will be replaced.' +
+      '\n- {"type":"web_search","query":"<search query>"} — for OTHER factual lookups (release dates, ' +
+      "is a series finished, author news). Not for recommendations — use recommend for those. You'll " +
+      'get results back and a chance to give your real answer.'
     : '';
 
   return `You are Mango 🍊, the playful shelf-keeper of MangaShelf, a personal manga/comic/graphic-novel reading tracker. Be warm, brief and a little bookish. The user is the shelf's only owner.
@@ -65,7 +69,8 @@ export async function llmAnswer(
   message: string,
   library: Series[],
   memorySummary: string,
-  recentMessages: StoredMessage[]
+  recentMessages: StoredMessage[],
+  opts: { safeMode?: boolean } = {}
 ): Promise<BotReply> {
   const system = [
     systemPrompt(),
@@ -90,49 +95,96 @@ export async function llmAnswer(
   let parsed = parseAgentJson(completion.content);
   let thinking = completion.reasoning;
   let searchResults: WebResult[] | undefined;
+  let searchedQuery: string | undefined;
+  let recOutcome: { replyText: string; recommendations: Recommendation[] } | null = null;
+  let recFailedHard = false;
 
-  // One bounded round-trip: if the model asked to search, run it and let the
-  // model compose its REAL answer from the results. Never loops further —
-  // a second web_search request in round 2 is just ignored.
-  const searchAction = parsed.actions.find((a) => a.type === 'web_search' && a.query);
-  if (searchAction?.query && webSearchEnabled()) {
+  // One bounded LLM round-trip helper: feed search results back and let the
+  // model compose its real answer. Never loops — round 2 can't search again.
+  const searchRound = async (query: string) => {
+    searchResults = await webSearch(query, 5);
+    searchedQuery = query;
+    const resultsBlock =
+      searchResults.length > 0
+        ? searchResults.map((r, i) => `${i + 1}. ${r.title} — ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n')
+        : '(no results found)';
+    const followUp = await chatComplete(ai, [
+      ...conversation,
+      { role: 'assistant' as const, content: completion.content },
+      {
+        role: 'user' as const,
+        content:
+          `WEB SEARCH RESULTS for "${query}":\n${resultsBlock}\n\n` +
+          'Now give your real reply using these results — same {"reply": ..., "actions": []} JSON shape ' +
+          '(no more web_search/recommend actions; the shelf actions above are still available if relevant). ' +
+          "Mention titles naturally in your reply text; you don't need to repeat the raw URLs, links are shown separately.",
+      },
+    ]);
+    completion = followUp;
+    // Keep round-1 actions the model emitted (e.g. set_status alongside the
+    // search) and add any new ones from round 2.
+    const roundTwo = parseAgentJson(followUp.content);
+    parsed = {
+      reply: roundTwo.reply,
+      actions: [...parsed.actions, ...roundTwo.actions],
+    };
+    thinking = [thinking, followUp.reasoning].filter(Boolean).join('\n\n---\n\n') || undefined;
+  };
+
+  // Recommendation ask? Hand off to the dedicated pipeline: it searches,
+  // distills real series, resolves covers + reader links, and composes the
+  // reply. Other shelf actions in the same turn still execute below.
+  const recAction = parsed.actions.find((a) => a.type === 'recommend' && a.query);
+  if (recAction?.query && webSearchEnabled()) {
     try {
-      searchResults = await webSearch(searchAction.query, 5);
-      const resultsBlock =
-        searchResults.length > 0
-          ? searchResults.map((r, i) => `${i + 1}. ${r.title} — ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n')
-          : '(no results found)';
-      const followUp = await chatComplete(ai, [
-        ...conversation,
-        { role: 'assistant' as const, content: completion.content },
-        {
-          role: 'user' as const,
-          content:
-            `WEB SEARCH RESULTS for "${searchAction.query}":\n${resultsBlock}\n\n` +
-            'Now give your real reply using these results — same {"reply": ..., "actions": []} JSON shape ' +
-            '(no more web_search actions; the shelf actions above are still available if relevant). ' +
-            "Mention titles naturally in your reply text; you don't need to repeat the raw URLs, links are shown separately.",
-        },
-      ]);
-      completion = followUp;
-      parsed = parseAgentJson(followUp.content);
-      thinking = [thinking, followUp.reasoning].filter(Boolean).join('\n\n---\n\n') || undefined;
+      recOutcome = await recommendSeries(recAction.query, library, ai, { safeMode: opts.safeMode });
+    } catch (err) {
+      console.warn(`[agent] recommend pipeline failed: ${err instanceof Error ? err.message : err}`);
+    }
+    if (!recOutcome || recOutcome.recommendations.length === 0) {
+      recOutcome = null;
+      // Pipeline came up empty — degrade to one plain search round so the
+      // user still gets something useful. (No action mutation: a co-emitted
+      // web_search keeps its own query.)
+      try {
+        await searchRound(recAction.query);
+      } catch (err) {
+        console.warn(`[agent] recommend degrade search failed: ${err instanceof Error ? err.message : err}`);
+        recFailedHard = true;
+      }
+    }
+  }
+
+  // An explicit web_search action (factual lookups). Skipped when the
+  // recommendation flow already ran a round — one search per turn.
+  const searchAction = parsed.actions.find((a) => a.type === 'web_search' && a.query);
+  if (searchAction?.query && webSearchEnabled() && !recOutcome && !searchedQuery && !recFailedHard) {
+    try {
+      await searchRound(searchAction.query);
     } catch (err) {
       // Search failed — fall back to the model's own (pre-search) reply text
       // rather than surfacing a raw error in chat.
       console.warn(`[agent] web search failed: ${err instanceof Error ? err.message : err}`);
+      searchedQuery = searchAction.query; // for the honest toolCall below
     }
   }
 
   // parsed.reply is already the cleaned/de-tagged text (or '' if the model's
   // entire output was tool-call scaffolding with nothing left to say) —
   // never fall back to the raw completion, that's exactly the unstripped
-  // text parseAgentJson worked to clean up.
+  // text parseAgentJson worked to clean up. The recommendation pipeline's
+  // composed reply wins when it ran; a hard double-failure gets an honest
+  // message instead of the model's "On it…" placeholder.
   const reply: BotReply = {
-    text: parsed.reply || 'Done! 👍',
+    text: recOutcome
+      ? recOutcome.replyText
+      : recFailedHard
+        ? "I couldn't reach the recommendation search just now — give it another try in a minute! 🌧️"
+        : parsed.reply || 'Done! 👍',
     thinking,
   };
-  if (searchResults && searchResults.length > 0) {
+  if (recOutcome) reply.recommendations = recOutcome.recommendations;
+  if (!recOutcome && searchResults && searchResults.length > 0) {
     reply.links = searchResults.map((r) => ({ href: r.url, label: r.title, snippet: r.snippet }));
   }
 
@@ -140,16 +192,24 @@ export async function llmAnswer(
   const toolCalls: string[] = [];
   let mutated = false;
 
-  if (searchAction?.query) {
+  if (recAction?.query) {
+    toolCalls.push(
+      recOutcome
+        ? `🔎 Searched the web and distilled ${recOutcome.recommendations.length} picks for "${recAction.query}"`
+        : recFailedHard
+          ? `🔎 Tried to search the web for "${recAction.query}" (unavailable)`
+          : `🔎 Searched the web for "${recAction.query}" (${searchResults?.length ?? 0} results)`
+    );
+  } else if (searchedQuery) {
     toolCalls.push(
       searchResults
-        ? `🔎 Searched the web for "${searchAction.query}" (${searchResults.length} results)`
-        : `🔎 Tried to search the web for "${searchAction.query}" (unavailable)`
+        ? `🔎 Searched the web for "${searchedQuery}" (${searchResults.length} results)`
+        : `🔎 Tried to search the web for "${searchedQuery}" (unavailable)`
     );
   }
 
   for (const action of parsed.actions.slice(0, 5)) {
-    if (action.type === 'web_search') continue; // handled above, not a shelf action
+    if (action.type === 'web_search' || action.type === 'recommend') continue; // handled above
     if (!action.title) continue;
     const hit = findSeries(action.title, library);
     if (!hit) continue;
@@ -212,6 +272,7 @@ const NAME_TO_TYPE: Record<string, AgentAction['type']> = {
   set_favorite: 'set_favorite',
   open: 'open',
   web_search: 'web_search',
+  recommend: 'recommend',
 };
 
 /**

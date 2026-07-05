@@ -1,6 +1,8 @@
 import type { Series } from './types';
 import { continueUrl } from './chapterUrl';
 import { webSearch, webSearchEnabled } from './websearch';
+import { recommendSeries, type Recommendation } from './recommend';
+import type { AIConfig } from './ai';
 
 export interface BotReply {
   text: string;
@@ -19,6 +21,11 @@ export interface BotReply {
   toolCalls?: string[];
   /** External recommendation links from a web search, when used. */
   links?: { href: string; label: string; snippet?: string }[];
+  /**
+   * Series recommendations from the AI pipeline — rendered as book cards
+   * with real covers; clicking one opens the reader and adds it to the shelf.
+   */
+  recommendations?: Recommendation[];
 }
 
 /**
@@ -26,7 +33,15 @@ export interface BotReply {
  * Understands: greetings, "what am I reading", "update <title> to chapter <n>",
  * "continue/open <title>", "recommend <genre>", "stats", "help".
  */
-export async function answer(message: string, library: Series[]): Promise<{
+export async function answer(
+  message: string,
+  library: Series[],
+  // The AI config still reaches the rules brain when it runs as the
+  // error-fallback for a failed LLM turn — so recommendations keep their
+  // full AI pipeline even on the retry path.
+  ai?: AIConfig,
+  opts: { safeMode?: boolean } = {}
+): Promise<{
   reply: BotReply;
   update?: { id: string; currentChapter: number };
 }> {
@@ -106,8 +121,11 @@ export async function answer(message: string, library: Series[]): Promise<{
   const rec = msg.match(/(?:recommend|suggest|something)\s+(.+)/);
   if (rec) {
     const q = rec[1].replace(/^(me\s+)?(a\s+|some\s+)?/, '').trim();
-    const matches = library.filter((s) =>
-      s.genres.some((g) => g.toLowerCase().includes(q)) || s.kind.includes(q)
+    const matches = library.filter(
+      (s) =>
+        // safe mode governs chat picks too — never surface a hidden series
+        !(opts.safeMode && s.nsfw) &&
+        (s.genres.some((g) => g.toLowerCase().includes(q)) || s.kind.includes(q))
     );
     if (matches.length > 0) {
       const pick = matches[Math.floor(Math.random() * matches.length)];
@@ -120,12 +138,31 @@ export async function answer(message: string, library: Series[]): Promise<{
     }
     // Nothing on the shelf fits — look outside it, if web search is configured.
     if (webSearchEnabled()) {
+      // Full AI pipeline when a key is available: real series, covers,
+      // click-to-add reader links.
+      if (ai) {
+        try {
+          const result = await recommendSeries(q, library, ai, { safeMode: opts.safeMode });
+          if (result && result.recommendations.length > 0) {
+            return {
+              reply: {
+                text: result.replyText,
+                recommendations: result.recommendations,
+                toolCalls: [`🔎 Searched the web and distilled ${result.recommendations.length} picks for "${q}"`],
+              },
+            };
+          }
+        } catch {
+          // fall through to raw links below
+        }
+      }
+      // No AI key (or the pipeline failed): raw search links, honestly labeled.
       try {
         const results = await webSearch(`best ${q} manga manhwa to read recommendations`, 4);
         if (results.length > 0) {
           return {
             reply: {
-              text: `Nothing tagged “${q}” on your shelf yet, but here's what's out there:`,
+              text: `Nothing tagged “${q}” on your shelf yet, but here's what's out there${ai ? '' : ' (add a Requesty key in ⚙ and I can turn these into proper picks with covers)'}:`,
               links: results.map((r) => ({ href: r.url, label: r.title, snippet: r.snippet })),
             },
           };

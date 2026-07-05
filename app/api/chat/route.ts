@@ -46,6 +46,7 @@ export const POST = withErrors(async (req: NextRequest) => {
   const apiKey = req.headers.get('x-ai-key')?.trim() || '';
   const model = req.headers.get('x-ai-model')?.trim() || DEFAULT_MODEL;
   const ai: AIConfig | undefined = apiKey ? { apiKey, model } : undefined;
+  const safeMode = req.headers.get('x-safe-mode') !== '0';
 
   const [library, memory] = await Promise.all([listSeries(), loadMemory()]);
 
@@ -54,12 +55,14 @@ export const POST = withErrors(async (req: NextRequest) => {
 
   if (ai) {
     try {
-      reply = await llmAnswer(ai, message, library, memory.summary, memory.messages);
+      reply = await llmAnswer(ai, message, library, memory.summary, memory.messages, { safeMode });
       provider = 'requesty';
     } catch (err) {
       // Surface the failure, then still answer with the built-in brain.
+      // The AI config is passed along: if the main call failed transiently,
+      // the recommend pipeline can still use it on this retry path.
       const detail = err instanceof Error ? err.message : 'unknown error';
-      const { reply: fallback, update } = await answer(message, library);
+      const { reply: fallback, update } = await answer(message, library, ai, { safeMode });
       if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
       reply = {
         ...fallback,
@@ -67,14 +70,24 @@ export const POST = withErrors(async (req: NextRequest) => {
       };
     }
   } else {
-    const { reply: ruleReply, update } = await answer(message, library);
+    const { reply: ruleReply, update } = await answer(message, library, undefined, { safeMode });
     if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
     reply = ruleReply;
   }
 
+  // The recommend pipeline puts the substance (titles/links) in cards, not
+  // the reply text — fold them into the persisted text so follow-up turns
+  // ("add the second one") and history reloads still know what was picked.
+  const memoryText =
+    reply.recommendations && reply.recommendations.length > 0
+      ? `${reply.text}\nPicks: ${reply.recommendations
+          .map((r, i) => `${i + 1}. ${r.title}${r.sourceUrl ? ` (${r.sourceUrl})` : ''}`)
+          .join('; ')}`
+      : reply.text;
+
   await appendMessages([
     { from: 'user', text: message },
-    { from: 'bot', text: reply.text },
+    { from: 'bot', text: memoryText },
   ]);
   await compactIfNeeded(ai);
 

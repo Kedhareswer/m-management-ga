@@ -433,7 +433,9 @@ export default function Dashboard() {
           </footer>
         </main>
 
-        {chatOpen && <ChatPanel onLibraryChange={refresh} onClose={() => setChatOpen(false)} />}
+        {chatOpen && (
+          <ChatPanel onLibraryChange={refresh} onClose={() => setChatOpen(false)} onAddSeries={addByUrl} />
+        )}
       </div>
 
       <AddMangaModal

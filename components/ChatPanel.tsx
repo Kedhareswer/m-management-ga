@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import gsap from 'gsap';
 import type { Series } from '@/lib/types';
 import type { BotReply } from '@/lib/bot';
+import type { Recommendation } from '@/lib/recommend';
+import type { AddOutcome } from './Dashboard';
 import { fetchJson } from '@/lib/fetchJson';
 import BookCover from './BookCover';
 import { SendIcon, ChevronIcon, CloseIcon, GearIcon, KeyIcon, TrashIcon, BrainIcon, WrenchIcon } from './icons';
@@ -15,6 +17,7 @@ interface Message {
   series?: Series[];
   link?: { href: string; label: string };
   links?: { href: string; label: string; snippet?: string }[];
+  recommendations?: Recommendation[];
   thinking?: string;
   toolCalls?: string[];
 }
@@ -34,9 +37,11 @@ const OPENERS: Omit<Message, 'id'>[] = [
 export default function ChatPanel({
   onLibraryChange,
   onClose,
+  onAddSeries,
 }: {
   onLibraryChange: () => void;
   onClose: () => void;
+  onAddSeries: (url: string) => Promise<AddOutcome>;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -103,6 +108,8 @@ export default function ChatPanel({
         headers['x-ai-key'] = aiKey;
         headers['x-ai-model'] = aiModel;
       }
+      // Safe mode (shelf toggle) also governs recommendations.
+      headers['x-safe-mode'] = localStorage.getItem('safe-mode') !== 'off' ? '1' : '0';
       const res = await fetchJson<BotReply & { provider?: string }>('/api/chat', {
         method: 'POST',
         headers,
@@ -121,6 +128,7 @@ export default function ChatPanel({
           series: reply.series,
           link: reply.link,
           links: reply.links,
+          recommendations: reply.recommendations,
           thinking: reply.thinking,
           toolCalls: reply.toolCalls,
         },
@@ -241,6 +249,14 @@ export default function ChatPanel({
               </a>
             )}
 
+            {m.recommendations && m.recommendations.length > 0 && (
+              <div className="mt-2.5 flex flex-col gap-2">
+                {m.recommendations.map((rec, i) => (
+                  <RecommendationCard key={`${m.id}-${i}`} rec={rec} index={i} onAddSeries={onAddSeries} />
+                ))}
+              </div>
+            )}
+
             {m.links && m.links.length > 0 && (
               <div className="mt-2.5 flex flex-col gap-1.5">
                 {m.links.map((l, i) => (
@@ -298,6 +314,104 @@ export default function ChatPanel({
         </button>
       </div>
     </aside>
+  );
+}
+
+// Cross-instance guard: the same series can appear as a card in two chat
+// messages; per-card state alone would let both fire POST /api/manga.
+const inFlightAdds = new Set<string>();
+
+/**
+ * A recommendation rendered like a real book off the shelf: cover art
+ * (generated jacket when none was found), title, why-you'd-like-it, and a
+ * one-click "read & add" that opens the reader AND files it on the shelf.
+ */
+function RecommendationCard({
+  rec,
+  index,
+  onAddSeries,
+}: {
+  rec: Recommendation;
+  index: number;
+  onAddSeries: (url: string) => Promise<AddOutcome>;
+}) {
+  const [state, setState] = useState<'idle' | 'adding' | 'added' | 'failed'>('idle');
+
+  // BookCover renders Series objects — dress the recommendation as one so
+  // recommendations look exactly like books on the shelf (real cover via the
+  // hotlink-proof proxy, or the generated cloth jacket).
+  const pseudo = {
+    id: `rec-${index}`,
+    title: rec.title,
+    sourceUrl: rec.sourceUrl || '',
+    site: '',
+    siteName: rec.siteName || rec.kind || 'recommended',
+    kind: 'manga',
+    genres: rec.genres || [],
+    coverUrl: rec.coverUrl,
+    coverHue: (rec.title.length + index) % 6,
+    status: 'plan-to-read',
+    favorite: false,
+    currentChapter: 0,
+    createdAt: '',
+    updatedAt: '',
+  } as Series;
+
+  const openAndAdd = async () => {
+    if (!rec.sourceUrl || state === 'adding' || state === 'added') return;
+    if (inFlightAdds.has(rec.sourceUrl)) return;
+    inFlightAdds.add(rec.sourceUrl);
+    // Open the reader right away (must be synchronous with the click for
+    // popup blockers), then add to the shelf in the background.
+    window.open(rec.sourceUrl, '_blank', 'noreferrer');
+    setState('adding');
+    try {
+      await onAddSeries(rec.sourceUrl);
+      setState('added');
+    } catch (err) {
+      // Duplicate is a soft success — it's already on the shelf.
+      const msg = err instanceof Error ? err.message : '';
+      setState(/already on your shelf/i.test(msg) ? 'added' : 'failed');
+    } finally {
+      inFlightAdds.delete(rec.sourceUrl);
+    }
+  };
+
+  return (
+    <button
+      onClick={openAndAdd}
+      disabled={!rec.sourceUrl}
+      className="flex w-full items-stretch gap-3 rounded-blob bg-card p-2.5 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift disabled:cursor-default"
+      title={
+        rec.sourceUrl
+          ? `Open ${rec.title} on ${rec.siteName || 'the reader'} and add it to your shelf`
+          : `${rec.title} — no reader link found`
+      }
+    >
+      <BookCover series={pseudo} className="h-[104px] w-[74px] shrink-0" />
+      <div className="flex min-w-0 flex-1 flex-col py-0.5">
+        <div className="truncate text-[13px] font-extrabold leading-tight">{rec.title}</div>
+        {(rec.genres?.length || rec.kind) && (
+          <div className="mt-0.5 truncate text-[10px] font-bold text-tomato/80">
+            {[rec.kind, ...(rec.genres || [])].filter(Boolean).slice(0, 4).join(' · ')}
+          </div>
+        )}
+        {rec.reason && (
+          <p className="mt-1 line-clamp-2 text-[10.5px] font-medium leading-snug text-fawn">{rec.reason}</p>
+        )}
+        <div className="mt-auto pt-1 text-[10.5px] font-extrabold">
+          {state === 'idle' &&
+            (rec.sourceUrl ? (
+              <span className="text-lavdeep">📖 read on {rec.siteName || 'site'} + add to shelf →</span>
+            ) : (
+              <span className="text-fawn">no reader link found</span>
+            ))}
+          {state === 'adding' && <span className="text-fawn">adding to your shelf…</span>}
+          {state === 'added' && <span className="text-leaf">✓ on your shelf</span>}
+          {state === 'failed' && <span className="text-tomato">couldn&apos;t add — try the + button</span>}
+        </div>
+      </div>
+    </button>
   );
 }
 
