@@ -4,6 +4,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { browserFetchImage } from '@/lib/playwright';
 import { withErrors } from '@/lib/api';
+import { getFetch } from '@/lib/proxy';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,7 +69,8 @@ interface Fetched {
 
 async function directFetch(url: string, ref?: string): Promise<Fetched | null> {
   try {
-    const res = await fetch(url, {
+    const doFetch = await getFetch();
+    const res = await doFetch(url, {
       headers: {
         'user-agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',

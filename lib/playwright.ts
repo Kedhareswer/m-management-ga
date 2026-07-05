@@ -1,6 +1,7 @@
 import { chromium, type Browser } from 'playwright';
 import type { ExtractedMeta } from './types';
 import { detectBlock } from './botcheck';
+import { playwrightProxy } from './proxy';
 
 /**
  * Playwright runs inside the Next.js server itself — no separate service.
@@ -60,6 +61,7 @@ export async function browserExtract(
       'sec-ch-ua-platform': '"Windows"',
       'upgrade-insecure-requests': '1',
     },
+    proxy: playwrightProxy(),
   });
   const page = await context.newPage();
   // Skip heavy assets — we only need the DOM (images still load for cover detection).
@@ -219,7 +221,7 @@ export async function browserFetchImage(
   ref?: string
 ): Promise<{ body: Buffer; type: string }> {
   const browser = await getBrowser();
-  const context = await browser.newContext({ userAgent: UA });
+  const context = await browser.newContext({ userAgent: UA, proxy: playwrightProxy() });
   try {
     const resp = await context.request.get(url, {
       headers: {

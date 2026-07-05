@@ -24,7 +24,10 @@ scrolling — and **Mango**, the little chat assistant in the right panel.
   present as a well-behaved browser (realistic headers, per-host rate
   limiting) which clears *soft* protection, and when a site hard-blocks us
   (Cloudflare/DataDome/CAPTCHA) we say so and let you fill details in by hand.
-  Chapter tracking never depends on the scrape.
+  Chapter tracking never depends on the scrape. If a specific site you have
+  legitimate access to still won't cooperate (geo-block, IP rate-limit), you
+  can point extraction at your own proxy with `SCRAPER_PROXY` — opt-in, your
+  proxy, your call, not something the app does on its own.
 - **Real cover art, even from hot-link-protected sites.** Manga CDNs usually
   refuse images without the right `Referer`, which is why hot-linked covers
   break. Covers are served through `/api/image`, which fetches server-side
@@ -115,6 +118,8 @@ DATABASE_URL=postgresql://user:password@your-host.neon.tech/neondb?sslmode=requi
 | `MEMORY_KEEP_RECENT`   | `12`                             | Messages kept verbatim after compaction        |
 | `CHROMIUM_PATH`        | Playwright's own                 | Use a pre-installed Chromium binary            |
 | `DISABLE_PLAYWRIGHT`   | unset                            | Set to `1` to force the lightweight extractor  |
+| `SCRAPE_MIN_INTERVAL_MS` | `1500`                          | Min spacing between scrapes of the same host   |
+| `SCRAPER_PROXY`        | unset                             | Route extraction through your own proxy (opt-in) |
 
 There is no login: this is a single-user app by design. The Requesty key is
 supplied per browser session in the chat settings, never via env or disk.

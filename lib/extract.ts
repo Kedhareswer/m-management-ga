@@ -4,6 +4,7 @@ import { browserExtract } from './playwright';
 import { detectBlock } from './botcheck';
 import { aiExtract, htmlToText } from './aiExtract';
 import { politeGate } from './ratelimit';
+import { getFetch } from './proxy';
 import type { AIConfig } from './ai';
 
 const KNOWN_GENRES = [
@@ -71,7 +72,8 @@ async function fallbackExtract(url: string, ai?: AIConfig): Promise<ExtractedMet
   let httpStatus: number | undefined;
   let reachable = false;
   try {
-    const res = await fetch(url, {
+    const doFetch = await getFetch();
+    const res = await doFetch(url, {
       headers: {
         'user-agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
