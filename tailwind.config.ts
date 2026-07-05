@@ -7,6 +7,22 @@ const config: Config = {
     './lib/**/*.{ts,tsx}',
   ],
   theme: {
+    // Sharp, editorial corners — override the whole radius scale so every
+    // existing rounded-* utility (incl. rounded-full pills/circles) reads
+    // crisp instead of bubbly. "blob"/"panel" are the app's card/panel tokens.
+    borderRadius: {
+      none: '0',
+      sm: '2px',
+      DEFAULT: '2px',
+      md: '2px',
+      lg: '3px',
+      xl: '3px',
+      '2xl': '4px',
+      '3xl': '4px',
+      blob: '3px',
+      panel: '4px',
+      full: '4px',
+    },
     extend: {
       colors: {
         shell: '#d5c7b8',       // outer backdrop taupe
@@ -22,13 +38,9 @@ const config: Config = {
         sun: '#f2b64c',
         sky: '#5a8fd6',
       },
-      borderRadius: {
-        blob: '28px',
-        panel: '36px',
-      },
       boxShadow: {
-        soft: '0 10px 30px -12px rgba(69, 59, 51, 0.25)',
-        lift: '0 18px 40px -16px rgba(69, 59, 51, 0.35)',
+        soft: '0 8px 22px -14px rgba(69, 59, 51, 0.28)',
+        lift: '0 16px 34px -18px rgba(69, 59, 51, 0.4)',
         inner1: 'inset 0 2px 6px rgba(69, 59, 51, 0.08)',
       },
       fontFamily: {

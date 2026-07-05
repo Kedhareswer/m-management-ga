@@ -32,7 +32,7 @@ export const PATCH = withErrors(async (req: NextRequest, ctx: Ctx) => {
   const allowed: (keyof Series)[] = [
     'title', 'currentChapter', 'totalChapters', 'status', 'favorite', 'genres', 'kind',
     'author', 'description', 'coverUrl', 'lastReadUrl', 'chapterUrlPattern', 'sourceUrl',
-    'startedAt', 'completedAt', 'metaStatus',
+    'startedAt', 'completedAt', 'metaStatus', 'nsfw',
   ];
   const safe: Partial<Series> = {};
   for (const key of allowed) {

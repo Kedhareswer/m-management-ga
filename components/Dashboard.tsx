@@ -13,12 +13,21 @@ import GenreChips from './GenreChips';
 import MangaCard from './MangaCard';
 import StatsBanner from './StatsBanner';
 import ChatPanel from './ChatPanel';
-import { ChevronIcon, RefreshIcon, LinkIcon } from './icons';
+import { ChevronIcon, RefreshIcon, LinkIcon, ShieldIcon, EyeOffIcon } from './icons';
 
 export interface AddOutcome {
   seriesId: string;
   metaStatus?: Series['metaStatus'];
   blockReason?: string;
+}
+
+/** Session Requesty key headers so extraction can use the LLM, matching the
+ * chat panel's "session-only key" contract. */
+function aiHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const key = sessionStorage.getItem('requesty-key')?.trim();
+  if (!key) return {};
+  return { 'x-ai-key': key, 'x-ai-model': sessionStorage.getItem('requesty-model') || 'google/gemma-4-31b-it' };
 }
 
 const NAV_LABEL: Record<NavFilter, string> = {
@@ -38,6 +47,18 @@ export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false);
   const [addPrefill, setAddPrefill] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Safe mode hides adult (nsfw) series. On by default; remembered locally.
+  const [safeMode, setSafeMode] = useState(true);
+  useEffect(() => {
+    setSafeMode(localStorage.getItem('safe-mode') !== 'off');
+  }, []);
+  const toggleSafeMode = useCallback(() => {
+    setSafeMode((v) => {
+      const next = !v;
+      localStorage.setItem('safe-mode', next ? 'on' : 'off');
+      return next;
+    });
+  }, []);
   // Chat starts open only where it fits beside the shelf (lg+); on phones
   // it's a full-screen overlay the user opens from the top bar.
   const [chatOpen, setChatOpen] = useState(false);
@@ -135,17 +156,22 @@ export default function Dashboard() {
     return () => ctx.revert();
   }, [library, loadError]);
 
+  // Safe mode hides nsfw series everywhere — including from the genre tabs.
+  const shelf = useMemo(
+    () => (library || []).filter((s) => !(safeMode && s.nsfw)),
+    [library, safeMode]
+  );
+  const hiddenNsfw = (library?.length ?? 0) - shelf.length;
+
   const genres = useMemo(() => {
-    if (!library) return [];
     const counts = new Map<string, number>();
-    for (const s of library) for (const g of s.genres) counts.set(g, (counts.get(g) || 0) + 1);
+    for (const s of shelf) for (const g of s.genres) counts.set(g, (counts.get(g) || 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([g]) => g).slice(0, 9);
-  }, [library]);
+  }, [shelf]);
 
   const visible = useMemo(() => {
-    if (!library) return [];
     const q = query.trim().toLowerCase();
-    return library.filter((s) => {
+    return shelf.filter((s) => {
       if (navFilter === 'favorites' && !s.favorite) return false;
       if (navFilter !== 'all' && navFilter !== 'favorites' && s.status !== navFilter) return false;
       if (genre !== 'All' && !s.genres.includes(genre)) return false;
@@ -155,7 +181,7 @@ export default function Dashboard() {
       }
       return true;
     });
-  }, [library, genre, query, navFilter]);
+  }, [shelf, genre, query, navFilter]);
 
   const clearFilters = useCallback(() => {
     setGenre('All');
@@ -173,7 +199,7 @@ export default function Dashboard() {
         blockReason?: string;
       }>('/api/manga', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...aiHeaders() },
         body: JSON.stringify({ url }),
       });
       if (!res.ok || !res.data) throw new Error(res.error || 'Extraction failed');
@@ -232,7 +258,10 @@ export default function Dashboard() {
 
   const refreshMeta = useCallback(
     async (id: string) => {
-      const res = await fetchJson<{ series: Series }>(`/api/manga/${id}/refresh`, { method: 'POST' });
+      const res = await fetchJson<{ series: Series }>(`/api/manga/${id}/refresh`, {
+        method: 'POST',
+        headers: aiHeaders(),
+      });
       if (res.ok && res.data?.series) {
         const server = res.data.series;
         setLibrary((lib) => (lib ? lib.map((s) => (s.id === id ? server : s)) : lib));
@@ -308,7 +337,25 @@ export default function Dashboard() {
                 <span className="ml-2 text-[13px] font-bold text-fawn">{visible.length}</span>
               </h2>
               <div className="flex items-center gap-2">
-                <button className="rounded-full bg-card px-4 py-1.5 text-[12px] font-bold text-fawn shadow-soft transition hover:text-ink" onClick={clearFilters}>
+                <button
+                  onClick={toggleSafeMode}
+                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-extrabold shadow-soft transition hover:-translate-y-0.5 ${
+                    safeMode ? 'bg-leaf/20 text-leaf' : 'bg-tomato/15 text-tomato'
+                  }`}
+                  title={
+                    safeMode
+                      ? `Safe mode on — adult series hidden${hiddenNsfw > 0 ? ` (${hiddenNsfw})` : ''}`
+                      : 'Safe mode off — showing adult series'
+                  }
+                  aria-pressed={safeMode}
+                >
+                  {safeMode ? <ShieldIcon /> : <EyeOffIcon />}
+                  {safeMode ? 'Safe' : '18+'}
+                  {safeMode && hiddenNsfw > 0 && (
+                    <span className="rounded-full bg-leaf/30 px-1.5 text-[10px]">{hiddenNsfw}</span>
+                  )}
+                </button>
+                <button className="hidden rounded-full bg-card px-4 py-1.5 text-[12px] font-bold text-fawn shadow-soft transition hover:text-ink sm:block" onClick={clearFilters}>
                   View All
                 </button>
                 <button className="icon-btn !h-8 !w-8 rotate-180" aria-label="Scroll shelf left" onClick={() => shelfRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}>

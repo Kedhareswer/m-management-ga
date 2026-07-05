@@ -13,9 +13,18 @@ scrolling — and **Mango**, the little chat assistant in the right panel.
 
 - **Paste a link → shelf card.** Playwright runs *inside* the Next.js server:
   it renders the page in headless Chromium (even JS-heavy readers) and pulls
-  title, genres, cover image, author, description and site name. A
-  lightweight fetch + meta-tag fallback kicks in if the browser can't run, so
-  adding always works.
+  title, genres, cover image, author, description and site name. When a
+  Requesty key is set, the LLM reads the page text to extract genres/author/
+  kind reliably across bespoke reader layouts (and flags adult content);
+  DOM heuristics are the no-key fallback. A lightweight fetch + meta-tag
+  fallback kicks in if the browser can't run, so adding always works.
+- **Safe mode.** Adult (nsfw) series are detected on add and hidden behind a
+  Safe-mode toggle in the shelf header (on by default, remembered locally).
+- **Bot-protected sites, handled honestly.** We don't defeat CAPTCHAs — we
+  present as a well-behaved browser (realistic headers, per-host rate
+  limiting) which clears *soft* protection, and when a site hard-blocks us
+  (Cloudflare/DataDome/CAPTCHA) we say so and let you fill details in by hand.
+  Chapter tracking never depends on the scrape.
 - **Real cover art, even from hot-link-protected sites.** Manga CDNs usually
   refuse images without the right `Referer`, which is why hot-linked covers
   break. Covers are served through `/api/image`, which fetches server-side

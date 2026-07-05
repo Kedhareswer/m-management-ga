@@ -40,8 +40,11 @@ async function getBrowser(): Promise<Browser> {
   return g.__mangaBrowser;
 }
 
-/** Render the page in headless Chromium and pull series metadata from it. */
-export async function browserExtract(url: string): Promise<Partial<ExtractedMeta>> {
+/** Render the page in headless Chromium and pull series metadata from it.
+ * Also returns the rendered HTML so the caller can run LLM extraction. */
+export async function browserExtract(
+  url: string
+): Promise<Partial<ExtractedMeta> & { html?: string }> {
   const browser = await getBrowser();
   // A realistic browser context — proper locale, timezone and headers make
   // us look like a real reader, which passes SOFT protection. This is not
@@ -197,9 +200,10 @@ export async function browserExtract(url: string): Promise<Partial<ExtractedMeta
         data.coverUrl = new URL(data.coverUrl, page.url()).toString();
       } catch {}
     }
+    const html = await page.content().catch(() => '');
     // status ('ok' vs 'partial') is finalised in normalize() based on how
     // many fields actually came back.
-    return { ...data, extractor: 'playwright' as const };
+    return { ...data, html, extractor: 'playwright' as const };
   } finally {
     await context.close();
   }

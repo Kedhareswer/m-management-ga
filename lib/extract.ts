@@ -2,6 +2,9 @@ import type { ExtractedMeta, SeriesKind } from './types';
 import { detectChapterPattern } from './chapterUrl';
 import { browserExtract } from './playwright';
 import { detectBlock } from './botcheck';
+import { aiExtract, htmlToText } from './aiExtract';
+import { politeGate } from './ratelimit';
+import type { AIConfig } from './ai';
 
 const KNOWN_GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Dark Fantasy', 'Horror',
@@ -15,8 +18,13 @@ const KNOWN_GENRES = [
  * Render the page with the in-app headless Chromium first (handles JS-heavy
  * readers), fall back to a plain fetch + meta-tag parse when the browser
  * can't launch or the page won't load.
+ *
+ * When an AI config is provided, the LLM reads the page text and extracts
+ * genres/author/kind/nsfw — far more reliable than DOM heuristics across the
+ * dozens of bespoke reader layouts. Heuristics remain the no-key fallback.
  */
-export async function extractMeta(url: string): Promise<ExtractedMeta> {
+export async function extractMeta(url: string, ai?: AIConfig): Promise<ExtractedMeta> {
+  await politeGate(url); // don't hammer the source site
   if (process.env.DISABLE_PLAYWRIGHT !== '1') {
     try {
       const data = await browserExtract(url);
@@ -25,17 +33,40 @@ export async function extractMeta(url: string): Promise<ExtractedMeta> {
       if (data.status === 'blocked') {
         return normalize(url, data);
       }
-      return normalize(url, { ...data, extractor: 'playwright' });
+      const enriched = ai && data.html ? await enrichWithAI(data, data.html, url, ai) : data;
+      return normalize(url, { ...enriched, extractor: 'playwright' });
     } catch (err) {
       console.warn(
         `[extract] browser extraction failed (${err instanceof Error ? err.message : err}), using fallback`
       );
     }
   }
-  return fallbackExtract(url);
+  return fallbackExtract(url, ai);
 }
 
-async function fallbackExtract(url: string): Promise<ExtractedMeta> {
+/** Merge LLM-read metadata over heuristic data — the LLM wins for the fields
+ * it's good at (genres/author/kind/nsfw/description), heuristics keep cover. */
+async function enrichWithAI(
+  base: Partial<ExtractedMeta>,
+  html: string,
+  url: string,
+  ai: AIConfig
+): Promise<Partial<ExtractedMeta>> {
+  const ai_ = await aiExtract(ai, htmlToText(html), url);
+  if (!ai_) return base;
+  return {
+    ...base,
+    title: ai_.title || base.title,
+    author: ai_.author || base.author,
+    genres: ai_.genres && ai_.genres.length > 0 ? ai_.genres : base.genres,
+    description: ai_.description || base.description,
+    kind: ai_.kind || base.kind,
+    siteName: base.siteName || ai_.siteName,
+    nsfw: ai_.nsfw ?? base.nsfw,
+  };
+}
+
+async function fallbackExtract(url: string, ai?: AIConfig): Promise<ExtractedMeta> {
   let html = '';
   let httpStatus: number | undefined;
   let reachable = false;
@@ -82,7 +113,7 @@ async function fallbackExtract(url: string): Promise<ExtractedMeta> {
     /<link[^>]+rel=["']image_src["'][^>]*href=["']([^"']+)["']/i
   )?.[1];
 
-  return normalize(url, {
+  const base: Partial<ExtractedMeta> = {
     title: cleanTitle(rawTitle),
     siteName: meta('og:site_name'),
     description: meta('og:description') || meta('description'),
@@ -90,7 +121,9 @@ async function fallbackExtract(url: string): Promise<ExtractedMeta> {
     genres: sniffGenres(html),
     author: meta('author') || meta('article:author'),
     extractor: 'fallback',
-  });
+  };
+  const enriched = ai ? await enrichWithAI(base, html, url, ai) : base;
+  return normalize(url, enriched);
 }
 
 function normalize(url: string, partial: Partial<ExtractedMeta>): ExtractedMeta {
@@ -111,8 +144,13 @@ function normalize(url: string, partial: Partial<ExtractedMeta>): ExtractedMeta 
     status = gotRealTitle && richFields >= 2 ? 'ok' : 'partial';
   }
 
+  const title = cleanTitle(partial.title || titleFromUrl(url));
+  // NSFW: trust the LLM flag when present; otherwise a light keyword guess so
+  // safe mode still works without an AI key.
+  const nsfw = partial.nsfw ?? guessNsfw(`${title} ${genres.join(' ')} ${url}`);
+
   return {
-    title: cleanTitle(partial.title || titleFromUrl(url)),
+    title,
     site: host,
     siteName: partial.siteName || prettyHost(host),
     kind: partial.kind || guessKind(url, partial),
@@ -125,7 +163,13 @@ function normalize(url: string, partial: Partial<ExtractedMeta>): ExtractedMeta 
     extractor: partial.extractor || 'fallback',
     status,
     blockReason: partial.blockReason,
+    nsfw,
   };
+}
+
+const NSFW_RE = /\b(hentai|nsfw|18\+|adult|smut|ecchi|yaoi|yuri|doujin(?:shi)?|r-?18|porn|erotic|mature)\b/i;
+function guessNsfw(hay: string): boolean {
+  return NSFW_RE.test(hay);
 }
 
 function sniffGenres(html: string): string[] {

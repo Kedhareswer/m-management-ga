@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { listSeries, addSeries, storageMode } from '@/lib/store';
 import { extractMeta } from '@/lib/extract';
 import { withErrors } from '@/lib/api';
+import { aiConfigFromHeaders } from '@/lib/aiHeaders';
 import type { Series } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ export const POST = withErrors(async (req: NextRequest) => {
   }
 
   const existing = await listSeries();
-  const meta = await extractMeta(url);
+  const meta = await extractMeta(url, aiConfigFromHeaders(req));
 
   const dupe = existing.find(
     (s) => s.title.toLowerCase() === meta.title.toLowerCase() && s.site === meta.site
@@ -61,6 +62,7 @@ export const POST = withErrors(async (req: NextRequest) => {
     chapterUrlPattern: meta.chapterUrlPattern,
     lastReadUrl: meta.detectedChapter ? url : undefined,
     metaStatus: meta.status,
+    nsfw: meta.nsfw ?? false,
   };
 
   const series = await addSeries(input);

@@ -38,6 +38,8 @@ export interface Series {
    *  - 'manual'     the user edited details themselves
    */
   metaStatus?: 'ok' | 'partial' | 'blocked' | 'unreachable' | 'manual';
+  /** Adult content — hidden when the shelf's safe mode is on. */
+  nsfw?: boolean;
   /**
    * Chapter URL template with "{chapter}" placeholder, detected when the
    * pasted link contained a chapter number, e.g.
@@ -68,4 +70,6 @@ export interface ExtractedMeta {
   status: 'ok' | 'partial' | 'blocked' | 'unreachable';
   /** Human-readable reason when a site blocked us (Cloudflare, CAPTCHA…). */
   blockReason?: string;
+  /** Adult content flag from the LLM extractor. */
+  nsfw?: boolean;
 }

@@ -126,6 +126,20 @@ export const CloseIcon = (p: P) => (
   </svg>
 );
 
+export const ShieldIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={16} height={16} {...base} {...p}>
+    <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);
+
+export const EyeOffIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={16} height={16} {...base} {...p}>
+    <path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+    <path d="M9.4 5.2A9.3 9.3 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3 3.7M6.3 6.3A16.8 16.8 0 0 0 2 12s4 7 10 7a9.2 9.2 0 0 0 3.2-.6" />
+  </svg>
+);
+
 export const GearIcon = (p: P) => (
   <svg viewBox="0 0 24 24" width={16} height={16} {...base} {...p}>
     <circle cx="12" cy="12" r="3" />
