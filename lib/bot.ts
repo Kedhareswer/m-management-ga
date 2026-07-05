@@ -9,6 +9,13 @@ export interface BotReply {
   link?: { href: string; label: string };
   /** An action the UI should perform (already performed server-side). */
   action?: 'updated-chapter' | 'none';
+  /**
+   * The model's chain-of-thought, when the provider exposes one. Never part
+   * of `text` — the UI renders this as a collapsed-by-default disclosure.
+   */
+  thinking?: string;
+  /** Human-readable summaries of shelf actions the agent actually took. */
+  toolCalls?: string[];
 }
 
 /**

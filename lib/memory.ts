@@ -125,7 +125,7 @@ export async function compactIfNeeded(ai?: AIConfig): Promise<void> {
   let summary: string;
   if (ai) {
     try {
-      summary = await chatComplete(
+      const completion = await chatComplete(
         ai,
         [
           {
@@ -142,6 +142,7 @@ export async function compactIfNeeded(ai?: AIConfig): Promise<void> {
         ],
         { maxTokens: 300, temperature: 0.3 }
       );
+      summary = completion.content;
     } catch {
       summary = heuristicSummary(mem.summary, old);
     }

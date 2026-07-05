@@ -69,16 +69,24 @@ export async function llmAnswer(
     content: m.text,
   }));
 
-  const raw = await chatComplete(ai, [
+  const completion = await chatComplete(ai, [
     { role: 'system', content: system },
     ...history,
     { role: 'user', content: message },
   ]);
 
-  const parsed = parseAgentJson(raw);
-  const reply: BotReply = { text: parsed.reply || raw.trim() };
+  const parsed = parseAgentJson(completion.content);
+  // parsed.reply is already the cleaned/de-tagged text (or '' if the model's
+  // entire output was tool-call scaffolding with nothing left to say) —
+  // never fall back to the raw completion, that's exactly the unstripped
+  // text parseAgentJson worked to clean up.
+  const reply: BotReply = {
+    text: parsed.reply || 'Done! 👍',
+    thinking: completion.reasoning,
+  };
 
   const touched: Series[] = [];
+  const toolCalls: string[] = [];
   let mutated = false;
 
   for (const action of parsed.actions.slice(0, 5)) {
@@ -87,12 +95,12 @@ export async function llmAnswer(
     if (!hit) continue;
 
     if (action.type === 'update_chapter' && typeof action.chapter === 'number') {
-      const updated = await updateSeries(hit.id, {
-        currentChapter: Math.max(0, action.chapter),
-      });
+      const chapter = Math.max(0, action.chapter);
+      const updated = await updateSeries(hit.id, { currentChapter: chapter });
       if (updated) {
         touched.push(updated);
         mutated = true;
+        toolCalls.push(`📖 Updated **${hit.title}** → chapter ${chapter}`);
       }
     } else if (action.type === 'set_status' && action.status) {
       const valid: Series['status'][] = ['reading', 'paused', 'completed', 'plan-to-read'];
@@ -101,6 +109,7 @@ export async function llmAnswer(
         if (updated) {
           touched.push(updated);
           mutated = true;
+          toolCalls.push(`🔖 Set **${hit.title}** status → ${action.status}`);
         }
       }
     } else if (action.type === 'set_favorite' && typeof action.favorite === 'boolean') {
@@ -108,10 +117,12 @@ export async function llmAnswer(
       if (updated) {
         touched.push(updated);
         mutated = true;
+        toolCalls.push(`${action.favorite ? '⭐ Favorited' : '☆ Unfavorited'} **${hit.title}**`);
       }
     } else if (action.type === 'open') {
       touched.push(hit);
       reply.link = { href: continueUrl(hit), label: `Continue ${hit.title}` };
+      toolCalls.push(`🔗 Opened continue-reading link for **${hit.title}**`);
     }
   }
 
@@ -124,6 +135,7 @@ export async function llmAnswer(
   }
 
   if (touched.length > 0) reply.series = dedupeById(touched).slice(0, 3);
+  if (toolCalls.length > 0) reply.toolCalls = toolCalls;
   if (mutated) reply.action = 'updated-chapter'; // signals the UI to refresh the shelf
   return reply;
 }
@@ -133,23 +145,69 @@ interface ParsedAgent {
   actions: AgentAction[];
 }
 
-/** Lenient parse: strip code fences, grab the outermost {...}, tolerate junk. */
+const TOOL_BLOCK_RE = /<(tool_call|function_call|tool_use|invoke)[^>]*>([\s\S]*?)<\/\1>/gi;
+const NAME_TO_TYPE: Record<string, AgentAction['type']> = {
+  update_chapter: 'update_chapter',
+  set_status: 'set_status',
+  set_favorite: 'set_favorite',
+  open: 'open',
+};
+
+/**
+ * Some models ignore the instructed-JSON envelope entirely and emit their
+ * own native-style tool-call blocks instead. Pull those out, translate any
+ * that match our action shape, and return the text with the blocks removed
+ * — so a model that goes off-script still gets its action carried out
+ * instead of just having the tags silently deleted.
+ */
+function extractNativeToolCalls(text: string): { text: string; actions: AgentAction[] } {
+  const actions: AgentAction[] = [];
+  const withoutBlocks = text.replace(TOOL_BLOCK_RE, (_match, _tag, inner) => {
+    try {
+      const start = inner.indexOf('{');
+      const end = inner.lastIndexOf('}');
+      if (start === -1 || end <= start) return '';
+      const obj = JSON.parse(inner.slice(start, end + 1));
+      const type = NAME_TO_TYPE[obj.name || obj.type];
+      const args = obj.arguments || obj.args || obj;
+      if (type) actions.push({ type, ...args });
+    } catch {
+      // unparseable block — drop it silently, nothing to translate
+    }
+    return '';
+  });
+  return { text: withoutBlocks, actions };
+}
+
+/** Lenient parse: strip native tool-call blocks and code fences, grab the
+ * outermost {...} matching our envelope shape, tolerate junk. */
 function parseAgentJson(raw: string): ParsedAgent {
-  const cleaned = raw.replace(/```(?:json)?/gi, '').trim();
+  const { text: withoutToolBlocks, actions: nativeActions } = extractNativeToolCalls(raw);
+  const cleaned = withoutToolBlocks.replace(/```(?:json)?/gi, '').trim();
+
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start !== -1 && end > start) {
     try {
       const obj = JSON.parse(cleaned.slice(start, end + 1));
-      return {
-        reply: typeof obj.reply === 'string' ? obj.reply : '',
-        actions: Array.isArray(obj.actions) ? obj.actions : [],
-      };
+      // Only accept it as our envelope if it actually has the shape we
+      // asked for — a stray balanced-brace JSON blob (e.g. a tool-call
+      // payload that isn't wrapped in recognisable tags) must NOT be
+      // mistaken for {reply, actions} and surfaced as an empty reply that
+      // falls back to the raw, unstripped text.
+      if (typeof obj.reply === 'string') {
+        return {
+          reply: obj.reply,
+          actions: [...(Array.isArray(obj.actions) ? obj.actions : []), ...nativeActions],
+        };
+      }
     } catch {
       // fall through — treat the whole output as prose
     }
   }
-  return { reply: cleaned, actions: [] };
+  // No recognisable envelope — show whatever prose is left (with any tool
+  // blocks already stripped above) as the reply.
+  return { reply: cleaned, actions: nativeActions };
 }
 
 function dedupeById(list: Series[]): Series[] {

@@ -154,6 +154,20 @@ export const KeyIcon = (p: P) => (
   </svg>
 );
 
+export const BrainIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={12} height={12} {...base} {...p}>
+    <path d="M9 4a3 3 0 0 0-3 3v.2A3 3 0 0 0 4 10v1a3 3 0 0 0 1 2.2V15a3 3 0 0 0 3 3h1" />
+    <path d="M15 4a3 3 0 0 1 3 3v.2a3 3 0 0 1 2 2.8v1a3 3 0 0 1-1 2.2V15a3 3 0 0 1-3 3h-1" />
+    <path d="M9 4v14M15 4v14" />
+  </svg>
+);
+
+export const WrenchIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" width={12} height={12} {...base} {...p}>
+    <path d="M14.7 6.3a4 4 0 0 0-5.4 4.6L3 17.2V21h3.8l6.3-6.3a4 4 0 0 0 4.6-5.4l-2.6 2.6-2-2 2.6-2.6Z" />
+  </svg>
+);
+
 export const RefreshIcon = (p: P) => (
   <svg viewBox="0 0 24 24" width={18} height={18} {...base} {...p}>
     <path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" />

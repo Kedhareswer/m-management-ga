@@ -47,7 +47,7 @@ export async function aiExtract(
 ): Promise<AIExtracted | null> {
   if (!pageText.trim()) return null;
   try {
-    const raw = await chatComplete(
+    const completion = await chatComplete(
       ai,
       [
         {
@@ -71,7 +71,7 @@ export async function aiExtract(
       { maxTokens: 500, temperature: 0.1 }
     );
 
-    const parsed = parseJson(raw);
+    const parsed = parseJson(completion.content);
     if (!parsed) return null;
 
     const genres = Array.isArray(parsed.genres)

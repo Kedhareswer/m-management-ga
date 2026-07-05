@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import gsap from 'gsap';
 import type { Series } from '@/lib/types';
 import type { BotReply } from '@/lib/bot';
 import { fetchJson } from '@/lib/fetchJson';
 import BookCover from './BookCover';
-import { SendIcon, ChevronIcon, CloseIcon, GearIcon, KeyIcon, TrashIcon } from './icons';
+import { SendIcon, ChevronIcon, CloseIcon, GearIcon, KeyIcon, TrashIcon, BrainIcon, WrenchIcon } from './icons';
 
 interface Message {
   id: number;
@@ -14,6 +14,8 @@ interface Message {
   text: string;
   series?: Series[];
   link?: { href: string; label: string };
+  thinking?: string;
+  toolCalls?: string[];
 }
 
 let nextId = 1;
@@ -111,7 +113,15 @@ export default function ChatPanel({
       const reply = res.data;
       setMessages((m) => [
         ...m,
-        { id: nextId++, from: 'bot', text: reply.text, series: reply.series, link: reply.link },
+        {
+          id: nextId++,
+          from: 'bot',
+          text: reply.text,
+          series: reply.series,
+          link: reply.link,
+          thinking: reply.thinking,
+          toolCalls: reply.toolCalls,
+        },
       ]);
       if (reply.action === 'updated-chapter') onLibraryChange();
     } catch (err) {
@@ -186,7 +196,17 @@ export default function ChatPanel({
       >
         {messages.map((m) => (
           <div key={m.id} data-bubble className={m.from === 'bot' ? 'bubble-bot' : 'bubble-user'}>
+            {m.thinking && <Disclosure icon={<BrainIcon />} label="Thinking" body={m.thinking} />}
+
             <p className="whitespace-pre-line">{m.text}</p>
+
+            {m.toolCalls && m.toolCalls.length > 0 && (
+              <Disclosure
+                icon={<WrenchIcon />}
+                label={`${m.toolCalls.length} shelf ${m.toolCalls.length === 1 ? 'action' : 'actions'}`}
+                body={m.toolCalls.join('\n')}
+              />
+            )}
 
             {m.series && m.series.length > 0 && (
               <div className="mt-2.5 flex gap-2">
@@ -255,6 +275,41 @@ export default function ChatPanel({
         </button>
       </div>
     </aside>
+  );
+}
+
+/**
+ * A collapsed-by-default disclosure for anything that isn't the direct
+ * answer — model reasoning, shelf actions taken. Hidden until clicked, so
+ * the chat reads clean by default but nothing is silently thrown away.
+ */
+function Disclosure({
+  icon,
+  label,
+  body,
+}: {
+  icon: ReactNode;
+  label: string;
+  body: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-full bg-parchment/70 px-2.5 py-1 text-[10.5px] font-bold text-fawn transition hover:text-ink"
+        aria-expanded={open}
+      >
+        {icon}
+        {label}
+        <ChevronIcon className={`transition-transform ${open ? 'rotate-90' : ''}`} width={11} height={11} />
+      </button>
+      {open && (
+        <p className="mt-1.5 whitespace-pre-line rounded-blob bg-parchment/60 px-3 py-2 text-[11.5px] font-medium leading-relaxed text-ink/70">
+          {body}
+        </p>
+      )}
+    </div>
   );
 }
 
