@@ -4,6 +4,7 @@ import { findSeries } from './bot';
 import { continueUrl } from './chapterUrl';
 import { updateSeries } from './store';
 import { chatComplete, type AIConfig } from './ai';
+import { webSearch, webSearchEnabled, type WebResult } from './websearch';
 import type { StoredMessage } from './memory';
 
 /**
@@ -14,14 +15,23 @@ import type { StoredMessage } from './memory';
  */
 
 interface AgentAction {
-  type: 'update_chapter' | 'set_status' | 'set_favorite' | 'open';
+  type: 'update_chapter' | 'set_status' | 'set_favorite' | 'open' | 'web_search';
   title?: string;
   chapter?: number;
   status?: Series['status'];
   favorite?: boolean;
+  query?: string;
 }
 
-const SYSTEM_PROMPT = `You are Mango 🍊, the playful shelf-keeper of MangaShelf, a personal manga/comic/graphic-novel reading tracker. Be warm, brief and a little bookish. The user is the shelf's only owner.
+function systemPrompt(): string {
+  const webSearchDoc = webSearchEnabled()
+    ? '\n- {"type":"web_search","query":"<search query>"} — when the user wants a recommendation ' +
+      "beyond what's on the shelf, search the web for it. You'll get results back and a chance to " +
+      'give your real answer using them — so when you use this action, keep "reply" short (e.g. ' +
+      '"Let me look that up…") since it will be replaced.'
+    : '';
+
+  return `You are Mango 🍊, the playful shelf-keeper of MangaShelf, a personal manga/comic/graphic-novel reading tracker. Be warm, brief and a little bookish. The user is the shelf's only owner.
 
 You can act on the shelf. Respond with ONLY a JSON object, no markdown fences, in this shape:
 {"reply": "<what you say to the user>", "actions": [ ...zero or more... ]}
@@ -30,9 +40,10 @@ Allowed actions:
 - {"type":"update_chapter","title":"<series title>","chapter":<number>} — move the user's bookmark
 - {"type":"set_status","title":"<series title>","status":"reading"|"paused"|"completed"|"plan-to-read"}
 - {"type":"set_favorite","title":"<series title>","favorite":true|false}
-- {"type":"open","title":"<series title>"} — when the user wants to continue/read a series, this attaches a link to their exact current chapter
+- {"type":"open","title":"<series title>"} — when the user wants to continue/read a series, this attaches a link to their exact current chapter${webSearchDoc}
 
-Rules: only use titles that exist on the shelf below. If the user asks to update something not on the shelf, say so in the reply with no action. Keep replies under 3 sentences unless asked for detail. Never invent chapter numbers the user didn't give you, except when recommending what's already on the shelf.`;
+Rules: only use titles that exist on the shelf below for update_chapter/set_status/set_favorite/open. If the user asks to update something not on the shelf, say so in the reply with no action. Keep replies under 3 sentences unless asked for detail. Never invent chapter numbers the user didn't give you, except when recommending what's already on the shelf.`;
+}
 
 function libraryBlock(library: Series[]): string {
   if (library.length === 0) return 'THE SHELF IS EMPTY.';
@@ -57,7 +68,7 @@ export async function llmAnswer(
   recentMessages: StoredMessage[]
 ): Promise<BotReply> {
   const system = [
-    SYSTEM_PROMPT,
+    systemPrompt(),
     libraryBlock(library),
     memorySummary ? `LONG-TERM MEMORY NOTES:\n${memorySummary}` : '',
   ]
@@ -69,27 +80,76 @@ export async function llmAnswer(
     content: m.text,
   }));
 
-  const completion = await chatComplete(ai, [
-    { role: 'system', content: system },
+  const conversation = [
+    { role: 'system' as const, content: system },
     ...history,
-    { role: 'user', content: message },
-  ]);
+    { role: 'user' as const, content: message },
+  ];
 
-  const parsed = parseAgentJson(completion.content);
+  let completion = await chatComplete(ai, conversation);
+  let parsed = parseAgentJson(completion.content);
+  let thinking = completion.reasoning;
+  let searchResults: WebResult[] | undefined;
+
+  // One bounded round-trip: if the model asked to search, run it and let the
+  // model compose its REAL answer from the results. Never loops further —
+  // a second web_search request in round 2 is just ignored.
+  const searchAction = parsed.actions.find((a) => a.type === 'web_search' && a.query);
+  if (searchAction?.query && webSearchEnabled()) {
+    try {
+      searchResults = await webSearch(searchAction.query, 5);
+      const resultsBlock =
+        searchResults.length > 0
+          ? searchResults.map((r, i) => `${i + 1}. ${r.title} — ${r.url}${r.snippet ? `\n   ${r.snippet}` : ''}`).join('\n')
+          : '(no results found)';
+      const followUp = await chatComplete(ai, [
+        ...conversation,
+        { role: 'assistant' as const, content: completion.content },
+        {
+          role: 'user' as const,
+          content:
+            `WEB SEARCH RESULTS for "${searchAction.query}":\n${resultsBlock}\n\n` +
+            'Now give your real reply using these results — same {"reply": ..., "actions": []} JSON shape ' +
+            '(no more web_search actions; the shelf actions above are still available if relevant). ' +
+            "Mention titles naturally in your reply text; you don't need to repeat the raw URLs, links are shown separately.",
+        },
+      ]);
+      completion = followUp;
+      parsed = parseAgentJson(followUp.content);
+      thinking = [thinking, followUp.reasoning].filter(Boolean).join('\n\n---\n\n') || undefined;
+    } catch (err) {
+      // Search failed — fall back to the model's own (pre-search) reply text
+      // rather than surfacing a raw error in chat.
+      console.warn(`[agent] web search failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   // parsed.reply is already the cleaned/de-tagged text (or '' if the model's
   // entire output was tool-call scaffolding with nothing left to say) —
   // never fall back to the raw completion, that's exactly the unstripped
   // text parseAgentJson worked to clean up.
   const reply: BotReply = {
     text: parsed.reply || 'Done! 👍',
-    thinking: completion.reasoning,
+    thinking,
   };
+  if (searchResults && searchResults.length > 0) {
+    reply.links = searchResults.map((r) => ({ href: r.url, label: r.title, snippet: r.snippet }));
+  }
 
   const touched: Series[] = [];
   const toolCalls: string[] = [];
   let mutated = false;
 
+  if (searchAction?.query) {
+    toolCalls.push(
+      searchResults
+        ? `🔎 Searched the web for "${searchAction.query}" (${searchResults.length} results)`
+        : `🔎 Tried to search the web for "${searchAction.query}" (unavailable)`
+    );
+  }
+
   for (const action of parsed.actions.slice(0, 5)) {
+    if (action.type === 'web_search') continue; // handled above, not a shelf action
     if (!action.title) continue;
     const hit = findSeries(action.title, library);
     if (!hit) continue;
@@ -151,6 +211,7 @@ const NAME_TO_TYPE: Record<string, AgentAction['type']> = {
   set_status: 'set_status',
   set_favorite: 'set_favorite',
   open: 'open',
+  web_search: 'web_search',
 };
 
 /**

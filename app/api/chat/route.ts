@@ -59,7 +59,7 @@ export const POST = withErrors(async (req: NextRequest) => {
     } catch (err) {
       // Surface the failure, then still answer with the built-in brain.
       const detail = err instanceof Error ? err.message : 'unknown error';
-      const { reply: fallback, update } = answer(message, library);
+      const { reply: fallback, update } = await answer(message, library);
       if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
       reply = {
         ...fallback,
@@ -67,7 +67,7 @@ export const POST = withErrors(async (req: NextRequest) => {
       };
     }
   } else {
-    const { reply: ruleReply, update } = answer(message, library);
+    const { reply: ruleReply, update } = await answer(message, library);
     if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
     reply = ruleReply;
   }

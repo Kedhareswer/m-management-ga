@@ -14,6 +14,7 @@ interface Message {
   text: string;
   series?: Series[];
   link?: { href: string; label: string };
+  links?: { href: string; label: string; snippet?: string }[];
   thinking?: string;
   toolCalls?: string[];
 }
@@ -119,6 +120,7 @@ export default function ChatPanel({
           text: reply.text,
           series: reply.series,
           link: reply.link,
+          links: reply.links,
           thinking: reply.thinking,
           toolCalls: reply.toolCalls,
         },
@@ -237,6 +239,27 @@ export default function ChatPanel({
               >
                 {m.link.label} →
               </a>
+            )}
+
+            {m.links && m.links.length > 0 && (
+              <div className="mt-2.5 flex flex-col gap-1.5">
+                {m.links.map((l, i) => (
+                  <a
+                    key={i}
+                    href={l.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-blob bg-card px-3 py-2 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                  >
+                    <div className="truncate text-[11.5px] font-extrabold text-lavdeep">{l.label}</div>
+                    {l.snippet && (
+                      <div className="mt-0.5 line-clamp-2 text-[10.5px] font-medium leading-snug text-fawn">
+                        {l.snippet}
+                      </div>
+                    )}
+                  </a>
+                ))}
+              </div>
             )}
           </div>
         ))}

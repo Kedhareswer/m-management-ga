@@ -1,5 +1,6 @@
 import type { Series } from './types';
 import { continueUrl } from './chapterUrl';
+import { webSearch, webSearchEnabled } from './websearch';
 
 export interface BotReply {
   text: string;
@@ -16,6 +17,8 @@ export interface BotReply {
   thinking?: string;
   /** Human-readable summaries of shelf actions the agent actually took. */
   toolCalls?: string[];
+  /** External recommendation links from a web search, when used. */
+  links?: { href: string; label: string; snippet?: string }[];
 }
 
 /**
@@ -23,10 +26,10 @@ export interface BotReply {
  * Understands: greetings, "what am I reading", "update <title> to chapter <n>",
  * "continue/open <title>", "recommend <genre>", "stats", "help".
  */
-export function answer(message: string, library: Series[]): {
+export async function answer(message: string, library: Series[]): Promise<{
   reply: BotReply;
   update?: { id: string; currentChapter: number };
-} {
+}> {
   const msg = message.trim().toLowerCase();
 
   if (/^(hi|hello|hey|good\s*(day|morning|evening)|yo)\b/.test(msg)) {
@@ -106,16 +109,32 @@ export function answer(message: string, library: Series[]): {
     const matches = library.filter((s) =>
       s.genres.some((g) => g.toLowerCase().includes(q)) || s.kind.includes(q)
     );
-    if (matches.length === 0) {
-      return { reply: { text: `Nothing tagged “${q}” on your shelf yet — add one and I'll remember it! 🌱` } };
+    if (matches.length > 0) {
+      const pick = matches[Math.floor(Math.random() * matches.length)];
+      return {
+        reply: {
+          text: `How about “${pick.title}”? ${pick.genres.join(' · ')} — you're at chapter ${pick.currentChapter}.`,
+          series: [pick],
+        },
+      };
     }
-    const pick = matches[Math.floor(Math.random() * matches.length)];
-    return {
-      reply: {
-        text: `How about “${pick.title}”? ${pick.genres.join(' · ')} — you're at chapter ${pick.currentChapter}.`,
-        series: [pick],
-      },
-    };
+    // Nothing on the shelf fits — look outside it, if web search is configured.
+    if (webSearchEnabled()) {
+      try {
+        const results = await webSearch(`best ${q} manga manhwa to read recommendations`, 4);
+        if (results.length > 0) {
+          return {
+            reply: {
+              text: `Nothing tagged “${q}” on your shelf yet, but here's what's out there:`,
+              links: results.map((r) => ({ href: r.url, label: r.title, snippet: r.snippet })),
+            },
+          };
+        }
+      } catch {
+        // fall through to the shelf-only message below
+      }
+    }
+    return { reply: { text: `Nothing tagged “${q}” on your shelf yet — add one and I'll remember it! 🌱` } };
   }
 
   if (/stats|numbers|progress|how much/.test(msg)) {
