@@ -1,10 +1,15 @@
+import { TinyFish, FetchFormat } from '@tiny-fish/sdk';
+
 /**
- * Web search for recommendations that go beyond your own shelf — e.g.
- * "recommend an isekai manga" when nothing on your shelf matches. Backed by
- * TinyFish (https://tinyfish.ai). The API key is a SERVER secret (unlike the
- * per-session Requesty key): set TINYFISH_API_KEY in .env.local, never in
- * the client. Feature is simply absent when the key isn't set — nothing
- * else in the app depends on it.
+ * TinyFish integration via the official @tiny-fish/sdk:
+ *  - search.query()      → web recommendations beyond the user's shelf
+ *  - fetch.getContents() → clean page content, used as a rescue when a
+ *    reader site blocks our own extractor (TinyFish fetches from THEIR
+ *    infrastructure, so a block against our IP doesn't apply)
+ *
+ * The API key is a SERVER secret (unlike the per-session Requesty key):
+ * set TINYFISH_API_KEY in .env.local / host env, never in the client.
+ * Features are simply absent when the key isn't set.
  */
 
 export interface WebResult {
@@ -13,57 +18,67 @@ export interface WebResult {
   snippet?: string;
 }
 
+export interface FetchedPage {
+  url: string;
+  title?: string;
+  description?: string;
+  author?: string;
+  /** Page content as markdown. */
+  text?: string;
+}
+
 const TINYFISH_API_KEY = process.env.TINYFISH_API_KEY?.trim() || '';
-const TINYFISH_BASE_URL = process.env.TINYFISH_BASE_URL?.trim() || 'https://api.search.tinyfish.ai';
+// SDK default is https://agent.tinyfish.ai — override only for local mocks.
+const TINYFISH_BASE_URL = process.env.TINYFISH_BASE_URL?.trim() || undefined;
 
 export function webSearchEnabled(): boolean {
   return TINYFISH_API_KEY.length > 0;
 }
 
+const g = globalThis as typeof globalThis & { __tinyfish?: TinyFish };
+
+function getClient(): TinyFish {
+  if (!TINYFISH_API_KEY) throw new Error('TINYFISH_API_KEY is not set');
+  if (!g.__tinyfish) {
+    g.__tinyfish = new TinyFish({
+      apiKey: TINYFISH_API_KEY,
+      baseURL: TINYFISH_BASE_URL,
+      timeout: 20_000,
+    });
+  }
+  return g.__tinyfish;
+}
+
 export async function webSearch(query: string, limit = 5): Promise<WebResult[]> {
-  if (!TINYFISH_API_KEY) return [];
-
-  const url = `${TINYFISH_BASE_URL}?${new URLSearchParams({ query })}`;
-  const res = await fetch(url, {
-    headers: { 'X-API-Key': TINYFISH_API_KEY },
-    signal: AbortSignal.timeout(10_000),
+  if (!webSearchEnabled()) return [];
+  const response = await getClient().search.query({
+    query,
+    location: 'US',
+    language: 'en',
   });
-  if (!res.ok) {
-    const body = (await res.text().catch(() => '')).slice(0, 200);
-    throw new Error(`TinyFish search ${res.status}: ${body || res.statusText}`);
-  }
-
-  const data = await res.json();
-  // Shape-tolerant: normalize whatever array-of-results wrapper is used.
-  const rawResults: unknown[] = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.results)
-      ? data.results
-      : Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data?.data)
-          ? data.data
-          : [];
-
-  return rawResults
-    .map(normalize)
-    .filter((r): r is WebResult => r !== null)
-    .slice(0, limit);
+  return response.results.slice(0, limit).map((r) => ({
+    title: r.title,
+    url: r.url,
+    snippet: r.snippet?.slice(0, 240) || undefined,
+  }));
 }
 
-function normalize(item: unknown): WebResult | null {
-  if (!item || typeof item !== 'object') return null;
-  const o = item as Record<string, unknown>;
-  const title = pickString(o, ['title', 'name', 'headline']);
-  const url = pickString(o, ['url', 'link', 'href']);
-  if (!title || !url) return null;
-  return { title, url, snippet: pickString(o, ['snippet', 'description', 'summary', 'content'])?.slice(0, 240) };
-}
-
-function pickString(o: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const k of keys) {
-    const v = o[k];
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  return undefined;
+/** Fetch one page's content as markdown through TinyFish's infrastructure. */
+export async function webFetchContent(url: string): Promise<FetchedPage | null> {
+  if (!webSearchEnabled()) return null;
+  const response = await getClient().fetch.getContents({
+    urls: [url],
+    format: FetchFormat.Markdown,
+  });
+  const page = response.results[0];
+  if (!page) return null;
+  // We always request markdown; text is an object only in the json variant.
+  const text = 'text' in page && typeof page.text === 'string' ? page.text : undefined;
+  return {
+    url,
+    title: page.title ?? undefined,
+    description: page.description ?? undefined,
+    author: page.author ?? undefined,
+    text,
+  };
 }

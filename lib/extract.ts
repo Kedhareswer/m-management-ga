@@ -5,6 +5,7 @@ import { detectBlock } from './botcheck';
 import { aiExtract, htmlToText } from './aiExtract';
 import { politeGate } from './ratelimit';
 import { getFetch } from './proxy';
+import { webFetchContent, webSearchEnabled } from './websearch';
 import type { AIConfig } from './ai';
 
 const KNOWN_GENRES = [
@@ -30,9 +31,11 @@ export async function extractMeta(url: string, ai?: AIConfig): Promise<Extracted
     try {
       const data = await browserExtract(url);
       // A real browser hit a hard block — the plain-fetch fallback won't do
-      // better, so report it honestly rather than masking with worse data.
+      // better. Try TinyFish's fetcher (their infrastructure, not our IP)
+      // before reporting the block honestly.
       if (data.status === 'blocked') {
-        return normalize(url, data);
+        const rescued = await tinyfishRescue(url, ai);
+        return rescued ?? normalize(url, data);
       }
       const enriched = ai && data.html ? await enrichWithAI(data, data.html, url, ai) : data;
       return normalize(url, { ...enriched, extractor: 'playwright' });
@@ -67,6 +70,48 @@ async function enrichWithAI(
   };
 }
 
+/**
+ * When the site blocks/refuses our own fetchers, pull the page through
+ * TinyFish's fetch API instead — it retrieves content from their
+ * infrastructure, so a block against this server doesn't apply. Returns
+ * null (caller reports the block honestly) unless we got a real title.
+ */
+async function tinyfishRescue(url: string, ai?: AIConfig): Promise<ExtractedMeta | null> {
+  if (!webSearchEnabled()) return null;
+  try {
+    const page = await webFetchContent(url);
+    if (!page || (!page.title && !page.text)) return null;
+
+    let partial: Partial<ExtractedMeta> = {
+      title: page.title,
+      description: page.description,
+      author: page.author,
+      extractor: 'fallback',
+    };
+    if (ai && page.text) {
+      const ai_ = await aiExtract(ai, page.text.slice(0, 6000), url);
+      if (ai_) {
+        partial = {
+          ...partial,
+          title: ai_.title || partial.title,
+          author: ai_.author || partial.author,
+          genres: ai_.genres,
+          description: ai_.description || partial.description,
+          kind: ai_.kind,
+          siteName: ai_.siteName,
+          nsfw: ai_.nsfw,
+        };
+      }
+    }
+    if (!partial.title) return null;
+    console.info(`[extract] TinyFish rescued blocked page: ${url}`);
+    return normalize(url, partial);
+  } catch (err) {
+    console.warn(`[extract] TinyFish rescue failed: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
 async function fallbackExtract(url: string, ai?: AIConfig): Promise<ExtractedMeta> {
   let html = '';
   let httpStatus: number | undefined;
@@ -91,13 +136,18 @@ async function fallbackExtract(url: string, ai?: AIConfig): Promise<ExtractedMet
   }
 
   if (!reachable) {
-    return normalize(url, { extractor: 'fallback', status: 'unreachable' });
+    const rescued = await tinyfishRescue(url, ai);
+    return rescued ?? normalize(url, { extractor: 'fallback', status: 'unreachable' });
   }
 
   const titleForBlock = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
   const block = detectBlock(html, { status: httpStatus, title: titleForBlock });
   if (block.blocked) {
-    return normalize(url, { extractor: 'fallback', status: 'blocked', blockReason: block.reason });
+    const rescued = await tinyfishRescue(url, ai);
+    return (
+      rescued ??
+      normalize(url, { extractor: 'fallback', status: 'blocked', blockReason: block.reason })
+    );
   }
 
   const meta = (name: string): string | undefined => {
