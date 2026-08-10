@@ -1,12 +1,12 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { SearchIcon, StackIcon, PlusIcon, ChatIcon } from './icons';
 
 /**
- * The top bar. Search is now single-purpose (filters your shelf as you
+ * The top bar. Search is single-purpose (filters your shelf as you
  * type) — adding a series has its own explicit "+ add" button that opens
- * a dedicated dialog, so it's discoverable instead of being a hidden second
- * mode of the search field.
+ * a dedicated dialog. Supports ⌘K / / keyboard shortcuts to focus search.
  */
 export default function AddBar({
   query,
@@ -23,17 +23,38 @@ export default function AddBar({
   chatOpen: boolean;
   onToggleChat: () => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div data-intro="addbar" className="flex items-center gap-2 md:gap-3">
-      <div className="flex h-[48px] min-w-0 flex-1 items-center gap-3 rounded-full bg-card px-4 shadow-soft md:h-[52px] md:px-5">
+      <div className="flex h-[48px] min-w-0 flex-1 items-center gap-3 rounded-full bg-card px-4 shadow-soft transition-all focus-within:ring-2 focus-within:ring-lavdeep/40 md:h-[52px] md:px-5">
         <SearchIcon className="shrink-0 text-fawn" />
         <input
+          ref={inputRef}
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search your shelf…"
+          placeholder="Search your shelf… (⌘K)"
           className="w-full min-w-0 bg-transparent text-[14px] font-semibold outline-none placeholder:text-fawn/80"
           aria-label="Search your shelf"
         />
+        <kbd className="hidden shrink-0 rounded-md bg-parchment px-2 py-0.5 text-[10px] font-extrabold text-fawn shadow-inner1 sm:inline-block">
+          ⌘K
+        </kbd>
       </div>
 
       <button
@@ -68,3 +89,4 @@ export default function AddBar({
     </div>
   );
 }
+

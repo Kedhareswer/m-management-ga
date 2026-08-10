@@ -38,10 +38,12 @@ export default function ChatPanel({
   onLibraryChange,
   onClose,
   onAddSeries,
+  onOpenReaderUrl,
 }: {
   onLibraryChange: () => void;
   onClose: () => void;
   onAddSeries: (url: string) => Promise<AddOutcome>;
+  onOpenReaderUrl?: (url: string, series?: Series) => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -49,7 +51,23 @@ export default function ChatPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiKey, setAiKey] = useState('');
   const [aiModel, setAiModel] = useState(DEFAULT_MODEL);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Handle scroll detection for jump-to-bottom floating arrow
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const isUp = el.scrollHeight - el.scrollTop - el.clientHeight > 100;
+    setShowScrollBottom(isUp);
+  };
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  };
 
   // Session-based key: lives in sessionStorage only, pasted once per session.
   useEffect(() => {
@@ -96,10 +114,10 @@ export default function ChatPanel({
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [messages, thinking]);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     if (!text || thinking) return;
-    setInput('');
+    if (!overrideText) setInput('');
     setMessages((m) => [...m, { id: nextId++, from: 'user', text }]);
     setThinking(true);
     try {
@@ -150,23 +168,36 @@ export default function ChatPanel({
     setMessages(OPENERS.map((m) => ({ ...m, id: nextId++ })));
   };
 
+  const PROMPT_CHIPS = [
+    { label: '📖 What am I reading?', text: 'what am I reading?' },
+    { label: '🎲 Recommend fantasy', text: 'recommend fantasy' },
+    { label: '📊 Reading stats', text: 'stats' },
+    { label: '❓ Help', text: 'help' },
+  ];
+
+  const nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
   return (
     <aside
       data-intro="chat"
-      className="fixed inset-0 z-40 flex w-full flex-col bg-[#efe6d5] p-4 pb-5 lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:rounded-panel lg:p-5 lg:shadow-inner1"
+      className="relative fixed inset-0 z-40 flex w-full flex-col bg-[#efe6d5] p-4 pb-5 lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:rounded-panel lg:p-5 lg:shadow-inner1"
     >
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between border-b border-parchment/60 pb-3">
         <div>
-          <h2 className="text-[17px] font-extrabold">Chat</h2>
-          <p className="text-[10px] font-bold text-fawn" title={aiKey ? `Model: ${aiModel} via Requesty` : 'No API key — using the built-in rules brain'}>
-            {aiKey ? `🧠 ${aiModel.split('/').pop()} · Requesty` : '📏 built-in rules · no key'}
+          <div className="flex items-center gap-2">
+            <span className="text-xl" role="img" aria-label="Mango avatar">🍊</span>
+            <h2 className="text-[17px] font-extrabold text-ink">Mango</h2>
+            <span className="h-2 w-2 rounded-full bg-leaf animate-pulse" title="Online" />
+          </div>
+          <p className="mt-0.5 text-[10.5px] font-bold text-fawn">
+            🧠 NVIDIA Gemma-4-31B Assistant
           </p>
         </div>
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setSettingsOpen((v) => !v)}
             className={`icon-btn !h-8 !w-8 ${settingsOpen ? '!text-lavdeep ring-2 ring-lavdeep/25' : ''}`}
-            title="AI settings (Requesty key & model)"
+            title="AI settings"
             aria-label="AI settings"
           >
             <GearIcon />
@@ -189,94 +220,111 @@ export default function ChatPanel({
         />
       )}
 
-      <button className="mt-4 flex items-center gap-3 rounded-blob bg-card px-4 py-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift">
-        <div>
-          <div className="text-[13px] font-extrabold">Privacy and Support</div>
-          <div className="text-[11px] font-semibold text-fawn">
-            Key lives only in this browser session
-          </div>
-        </div>
-        <ChevronIcon className="ml-auto shrink-0 text-fawn" />
-      </button>
+      {/* Quick Prompts Bar */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {PROMPT_CHIPS.map((chip, idx) => (
+          <button
+            key={idx}
+            onClick={() => send(chip.text)}
+            disabled={thinking}
+            className="rounded-full bg-card px-2.5 py-1 text-[10.5px] font-extrabold text-ink/80 shadow-soft transition hover:-translate-y-0.5 hover:bg-lav/40 hover:text-ink disabled:opacity-50"
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
 
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         data-lenis-prevent
-        className="mt-4 flex flex-1 flex-col gap-2.5 overflow-y-auto pr-1"
+        className="mt-4 flex flex-1 flex-col gap-3 overflow-y-auto pr-1"
       >
         {messages.map((m) => (
-          <div key={m.id} data-bubble className={m.from === 'bot' ? 'bubble-bot' : 'bubble-user'}>
-            {m.thinking && <Disclosure icon={<BrainIcon />} label="Thinking" body={m.thinking} />}
+          <div key={m.id} data-bubble className={`flex gap-2 ${m.from === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+            {/* Avatar Badge */}
+            <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-card shadow-soft text-xs">
+              {m.from === 'bot' ? '🍊' : '👤'}
+            </div>
 
-            <p className="whitespace-pre-line">{m.text}</p>
+            <div className={m.from === 'bot' ? 'bubble-bot' : 'bubble-user'}>
+              {m.thinking && <Disclosure icon={<BrainIcon />} label="Thinking" body={m.thinking} />}
 
-            {m.toolCalls && m.toolCalls.length > 0 && (
-              <Disclosure
-                icon={<WrenchIcon />}
-                label={`${m.toolCalls.length} shelf ${m.toolCalls.length === 1 ? 'action' : 'actions'}`}
-                body={m.toolCalls.join('\n')}
-              />
-            )}
+              <p className="whitespace-pre-line">{m.text}</p>
 
-            {m.series && m.series.length > 0 && (
-              <div className="mt-2.5 flex gap-2">
-                {m.series.map((s) => (
-                  <a
-                    key={s.id}
-                    href={`/go/${s.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-[72px] shrink-0 transition hover:-translate-y-1"
-                    title={`${s.title} — continue at ch. ${s.currentChapter}`}
-                  >
-                    <BookCover series={s} className="h-[92px] w-full" />
-                    <div className="mt-2 truncate text-center text-[9px] font-bold text-fawn">
-                      ch. {s.currentChapter}
-                    </div>
-                  </a>
-                ))}
-              </div>
-            )}
+              {m.toolCalls && m.toolCalls.length > 0 && (
+                <Disclosure
+                  icon={<WrenchIcon />}
+                  label={`${m.toolCalls.length} shelf ${m.toolCalls.length === 1 ? 'action' : 'actions'}`}
+                  body={m.toolCalls.join('\n')}
+                />
+              )}
 
-            {m.link && (
-              <a
-                href={m.link.href}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-block rounded-full bg-lavdeep px-3.5 py-1.5 text-[11px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5"
-              >
-                {m.link.label} →
-              </a>
-            )}
-
-            {m.recommendations && m.recommendations.length > 0 && (
-              <div className="mt-2.5 flex flex-col gap-2">
-                {m.recommendations.map((rec, i) => (
-                  <RecommendationCard key={`${m.id}-${i}`} rec={rec} index={i} onAddSeries={onAddSeries} />
-                ))}
-              </div>
-            )}
-
-            {m.links && m.links.length > 0 && (
-              <div className="mt-2.5 flex flex-col gap-1.5">
-                {m.links.map((l, i) => (
-                  <a
-                    key={i}
-                    href={l.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block rounded-blob bg-card px-3 py-2 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
-                  >
-                    <div className="truncate text-[11.5px] font-extrabold text-lavdeep">{l.label}</div>
-                    {l.snippet && (
-                      <div className="mt-0.5 line-clamp-2 text-[10.5px] font-medium leading-snug text-fawn">
-                        {l.snippet}
+              {m.series && m.series.length > 0 && (
+                <div className="mt-2.5 flex gap-2">
+                  {m.series.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => onOpenReaderUrl?.(`/go/${s.id}`, s)}
+                      className="w-[72px] shrink-0 text-left transition hover:-translate-y-1"
+                      title={`${s.title} — continue at ch. ${s.currentChapter}`}
+                    >
+                      <BookCover series={s} className="h-[92px] w-full" />
+                      <div className="mt-2 truncate text-center text-[9px] font-bold text-fawn">
+                        ch. {s.currentChapter}
                       </div>
-                    )}
-                  </a>
-                ))}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {m.link && (
+                <button
+                  onClick={() => onOpenReaderUrl?.(m.link!.href)}
+                  className="mt-2 inline-block rounded-full bg-lavdeep px-3.5 py-1.5 text-[11px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5"
+                >
+                  {m.link.label} →
+                </button>
+              )}
+
+              {m.recommendations && m.recommendations.length > 0 && (
+                <div className="mt-2.5 flex flex-col gap-2">
+                  {m.recommendations.map((rec, i) => (
+                    <RecommendationCard
+                      key={`${m.id}-${i}`}
+                      rec={rec}
+                      index={i}
+                      onAddSeries={onAddSeries}
+                      onOpenReaderUrl={onOpenReaderUrl}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {m.links && m.links.length > 0 && (
+                <div className="mt-2.5 flex flex-col gap-1.5">
+                  {m.links.map((l, i) => (
+                    <button
+                      key={i}
+                      onClick={() => onOpenReaderUrl?.(l.href)}
+                      className="block text-left rounded-blob bg-card px-3 py-2 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                    >
+                      <div className="truncate text-[11.5px] font-extrabold text-lavdeep">{l.label}</div>
+                      {l.snippet && (
+                        <div className="mt-0.5 line-clamp-2 text-[10.5px] font-medium leading-snug text-fawn">
+                          {l.snippet}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Timestamp */}
+              <div className="mt-1 text-right text-[9px] font-bold text-fawn/60">
+                {nowTimeStr}
               </div>
-            )}
+            </div>
           </div>
         ))}
 
@@ -305,7 +353,7 @@ export default function ChatPanel({
           />
         </div>
         <button
-          onClick={send}
+          onClick={() => send()}
           className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-tomato text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift active:translate-y-0"
           title="Send"
           aria-label="Send message"
@@ -330,16 +378,15 @@ function RecommendationCard({
   rec,
   index,
   onAddSeries,
+  onOpenReaderUrl,
 }: {
   rec: Recommendation;
   index: number;
   onAddSeries: (url: string) => Promise<AddOutcome>;
+  onOpenReaderUrl?: (url: string, series?: Series) => void;
 }) {
   const [state, setState] = useState<'idle' | 'adding' | 'added' | 'failed'>('idle');
 
-  // BookCover renders Series objects — dress the recommendation as one so
-  // recommendations look exactly like books on the shelf (real cover via the
-  // hotlink-proof proxy, or the generated cloth jacket).
   const pseudo = {
     id: `rec-${index}`,
     title: rec.title,
@@ -357,19 +404,21 @@ function RecommendationCard({
     updatedAt: '',
   } as Series;
 
-  const openAndAdd = async () => {
+  const openAndAdd = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!rec.sourceUrl || state === 'adding' || state === 'added') return;
     if (inFlightAdds.has(rec.sourceUrl)) return;
     inFlightAdds.add(rec.sourceUrl);
-    // Open the reader right away (must be synchronous with the click for
-    // popup blockers), then add to the shelf in the background.
-    window.open(rec.sourceUrl, '_blank', 'noreferrer');
+    if (onOpenReaderUrl) {
+      onOpenReaderUrl(rec.sourceUrl, pseudo);
+    } else {
+      window.open(rec.sourceUrl, '_blank', 'noreferrer');
+    }
     setState('adding');
     try {
       await onAddSeries(rec.sourceUrl);
       setState('added');
     } catch (err) {
-      // Duplicate is a soft success — it's already on the shelf.
       const msg = err instanceof Error ? err.message : '';
       setState(/already on your shelf/i.test(msg) ? 'added' : 'failed');
     } finally {
@@ -378,13 +427,12 @@ function RecommendationCard({
   };
 
   return (
-    <button
-      onClick={openAndAdd}
-      disabled={!rec.sourceUrl}
-      className="flex w-full items-stretch gap-3 rounded-blob bg-card p-2.5 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift disabled:cursor-default"
+    <div
+      onClick={(e) => openAndAdd(e)}
+      className="flex w-full items-stretch gap-3 rounded-blob bg-card p-2.5 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift cursor-pointer"
       title={
         rec.sourceUrl
-          ? `Open ${rec.title} on ${rec.siteName || 'the reader'} and add it to your shelf`
+          ? `Read ${rec.title} on ${rec.siteName || 'the reader'} and add to shelf`
           : `${rec.title} — no reader link found`
       }
     >
@@ -399,19 +447,19 @@ function RecommendationCard({
         {rec.reason && (
           <p className="mt-1 line-clamp-2 text-[10.5px] font-medium leading-snug text-fawn">{rec.reason}</p>
         )}
-        <div className="mt-auto pt-1 text-[10.5px] font-extrabold">
+        <div className="mt-auto pt-1 text-[10.5px] font-extrabold flex items-center gap-2">
           {state === 'idle' &&
             (rec.sourceUrl ? (
-              <span className="text-lavdeep">📖 read on {rec.siteName || 'site'} + add to shelf →</span>
+              <span className="text-lavdeep hover:underline">📖 Read in App &amp; Add →</span>
             ) : (
               <span className="text-fawn">no reader link found</span>
             ))}
-          {state === 'adding' && <span className="text-fawn">adding to your shelf…</span>}
+          {state === 'adding' && <span className="text-fawn animate-pulse">adding to shelf…</span>}
           {state === 'added' && <span className="text-leaf">✓ on your shelf</span>}
-          {state === 'failed' && <span className="text-tomato">couldn&apos;t add — try the + button</span>}
+          {state === 'failed' && <span className="text-tomato">couldn&apos;t add — try + add button</span>}
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 

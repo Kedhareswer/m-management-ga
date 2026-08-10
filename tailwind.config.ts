@@ -12,16 +12,16 @@ const config: Config = {
     // crisp instead of bubbly. "blob"/"panel" are the app's card/panel tokens.
     borderRadius: {
       none: '0',
-      sm: '2px',
-      DEFAULT: '2px',
-      md: '2px',
-      lg: '3px',
-      xl: '3px',
-      '2xl': '4px',
-      '3xl': '4px',
-      blob: '3px',
-      panel: '4px',
-      full: '4px',
+      sm: '6px',
+      DEFAULT: '8px',
+      md: '10px',
+      lg: '12px',
+      xl: '16px',
+      '2xl': '20px',
+      '3xl': '24px',
+      blob: '16px',
+      panel: '24px',
+      full: '9999px',
     },
     extend: {
       colors: {

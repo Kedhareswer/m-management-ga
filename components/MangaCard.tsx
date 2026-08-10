@@ -25,12 +25,14 @@ export default function MangaCard({
   onToggleFavorite,
   onDelete,
   onOpen,
+  onOpenReader,
 }: {
   series: Series;
   onChapterChange: (id: string, chapter: number) => void;
   onToggleFavorite: (id: string, favorite: boolean) => void;
   onDelete: (id: string) => void;
   onOpen: (id: string) => void;
+  onOpenReader?: (series: Series) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(series.currentChapter));
@@ -49,7 +51,7 @@ export default function MangaCard({
   return (
     <article
       data-shelf-card
-      className="group flex w-[196px] shrink-0 flex-col rounded-blob bg-card p-4 shadow-soft transition-shadow hover:shadow-lift"
+      className="group flex w-full flex-col rounded-blob bg-card p-4 shadow-soft transition-all duration-300 hover:-translate-y-1 hover:shadow-lift"
     >
       {/* Cover opens the detail view; "Continue reading" jumps to the chapter */}
       <div className="relative">
@@ -154,14 +156,18 @@ export default function MangaCard({
         </button>
       </div>
 
-      <a
-        href={`/go/${series.id}`}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-2.5 flex items-center justify-center gap-1.5 rounded-2xl bg-lavdeep py-2 text-[12px] font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift active:translate-y-0"
+      <button
+        onClick={() => {
+          if (onOpenReader) {
+            onOpenReader(series);
+          } else {
+            window.open(`/go/${series.id}`, '_blank');
+          }
+        }}
+        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-lavdeep py-2 text-[12px] font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift active:translate-y-0"
       >
         Continue reading <ExternalIcon />
-      </a>
+      </button>
     </article>
   );
 }

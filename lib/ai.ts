@@ -19,16 +19,19 @@ export interface AIMessage {
 }
 
 export const HARDCODED_API_KEY =
+  process.env.NVIDIA_API_KEY ||
   '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';
 export const DEFAULT_INVOKE_URL =
+  process.env.NVIDIA_API_URL ||
   'https://integrate.api.nvidia.com/v1/chat/completions';
-export const DEFAULT_MODEL = process.env.AI_MODEL || 'google/gemma-4-31b-it';
+export const DEFAULT_MODEL =
+  process.env.NVIDIA_MODEL || process.env.AI_MODEL || 'google/gemma-4-31b-it';
 
 export function getHardcodedAIConfig(): AIConfig {
   return {
-    apiKey: HARDCODED_API_KEY,
-    model: DEFAULT_MODEL,
-    baseUrl: DEFAULT_INVOKE_URL,
+    apiKey: process.env.NVIDIA_API_KEY?.trim() || HARDCODED_API_KEY,
+    model: process.env.NVIDIA_MODEL?.trim() || DEFAULT_MODEL,
+    baseUrl: process.env.NVIDIA_API_URL?.trim() || DEFAULT_INVOKE_URL,
   };
 }
 

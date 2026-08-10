@@ -69,14 +69,14 @@ export default function AddMangaModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-md transition-opacity"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-manga-title"
     >
       <div
-        className="w-full max-w-md rounded-panel bg-card p-6 shadow-lift"
+        className="w-full max-w-md rounded-panel bg-card p-6 shadow-lift border border-white/60 transition-all transform scale-100"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">

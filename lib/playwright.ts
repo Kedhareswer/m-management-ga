@@ -9,7 +9,7 @@ import { playwrightProxy } from './proxy';
  * dev-mode hot reloads don't leak browsers).
  */
 
-const NAV_TIMEOUT = 25_000;
+const NAV_TIMEOUT = 10_000;
 
 const KNOWN_GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Dark Fantasy', 'Horror',

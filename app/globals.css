@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --paper-grain: radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.35) 0, transparent 45%),
-    radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.2) 0, transparent 40%);
+  --paper-grain: radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.4) 0, transparent 45%),
+    radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.25) 0, transparent 40%);
 }
 
 html,
@@ -30,7 +30,7 @@ html.lenis body {
 }
 
 ::selection {
-  @apply bg-lavdeep/40;
+  @apply bg-lavdeep/30 text-ink;
 }
 
 /* Slim playful scrollbars */
@@ -39,8 +39,11 @@ html.lenis body {
   height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(69, 59, 51, 0.2);
-  border-radius: 99px;
+  background: rgba(69, 59, 51, 0.25);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(69, 59, 51, 0.4);
 }
 *::-webkit-scrollbar-track {
   background: transparent;
@@ -48,27 +51,30 @@ html.lenis body {
 
 @layer components {
   .icon-btn {
-    @apply grid h-11 w-11 place-items-center rounded-full bg-card text-fawn shadow-soft transition
-      hover:-translate-y-0.5 hover:text-ink hover:shadow-lift active:translate-y-0;
+    @apply grid h-11 w-11 place-items-center rounded-full bg-card text-fawn shadow-soft transition-all duration-200
+      hover:-translate-y-0.5 hover:text-ink hover:shadow-lift active:translate-y-0 active:scale-95;
   }
   .chip {
-    @apply flex shrink-0 cursor-pointer flex-col items-center gap-1.5 rounded-2xl px-3 py-2 text-[11px]
-      font-semibold text-fawn transition hover:-translate-y-0.5 hover:text-ink;
+    @apply flex shrink-0 cursor-pointer flex-col items-center gap-1.5 rounded-2xl px-3.5 py-2 text-[11.5px]
+      font-semibold text-fawn transition-all duration-200 hover:-translate-y-0.5 hover:text-ink;
   }
   .chip-active {
-    @apply text-ink;
+    @apply text-ink font-bold;
   }
   .bubble-bot {
-    @apply max-w-[85%] self-start rounded-2xl rounded-tl-md bg-card px-4 py-2.5 text-[13px] leading-relaxed shadow-soft;
+    @apply max-w-[88%] self-start rounded-2xl rounded-tl-sm bg-card px-4 py-3 text-[13px] leading-relaxed shadow-soft transition-all;
   }
   .bubble-user {
-    @apply max-w-[85%] self-end rounded-2xl rounded-br-md bg-lav px-4 py-2.5 text-[13px] leading-relaxed text-ink shadow-soft;
+    @apply max-w-[88%] self-end rounded-2xl rounded-br-sm bg-lav px-4 py-3 text-[13px] leading-relaxed text-ink shadow-soft transition-all;
+  }
+  .glass-panel {
+    @apply bg-parchment/90 backdrop-blur-md border border-white/40 shadow-lift;
   }
 }
 
 @keyframes ribbon-sway {
   0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(4deg); }
+  50% { transform: rotate(5deg); }
 }
 
 @keyframes float-slow {
@@ -76,6 +82,18 @@ html.lenis body {
   50% { transform: translateY(-6px); }
 }
 
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
 .animate-float-slow {
   animation: float-slow 5s ease-in-out infinite;
 }
+
+.animate-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.5s infinite;
+}
+

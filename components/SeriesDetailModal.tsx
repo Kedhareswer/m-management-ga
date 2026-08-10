@@ -157,7 +157,7 @@ export default function SeriesDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 p-3 backdrop-blur-sm md:p-6"
+      className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 p-3 backdrop-blur-md transition-opacity md:p-6"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -166,24 +166,17 @@ export default function SeriesDetailModal({
       <div
         ref={cardRef}
         onClick={(e) => e.stopPropagation()}
-        className="mx-auto my-4 w-full max-w-2xl rounded-panel bg-card p-5 shadow-lift md:my-10 md:p-7"
+        className="mx-auto my-4 w-full max-w-3xl rounded-panel bg-card p-6 shadow-lift border border-white/70 md:my-8 md:p-8"
       >
-        {/* header */}
-        <div className="flex items-center justify-between gap-2">
+        {/* Header bar */}
+        <div className="flex items-center justify-between gap-2 border-b border-parchment pb-4">
           <div className="flex items-center gap-2">
-            <span className="rounded-full bg-lav/50 px-3 py-1 text-[11px] font-extrabold text-ink">
+            <span className="rounded-full bg-peach/70 px-3 py-1 text-[11px] font-extrabold text-ink">
               {KIND_LABEL[series.kind]}
             </span>
-            <button
-              onClick={() => onPatch(series.id, { favorite: !series.favorite })}
-              className={`grid h-8 w-8 place-items-center rounded-full transition active:scale-90 ${
-                series.favorite ? 'bg-sun text-white shadow-soft' : 'bg-parchment text-fawn hover:text-sun'
-              }`}
-              title={series.favorite ? 'Remove from favourites' : 'Add to favourites'}
-              aria-pressed={series.favorite}
-            >
-              <StarIcon fill={series.favorite ? 'currentColor' : 'none'} />
-            </button>
+            <span className="text-[11px] font-bold text-fawn">
+              ch. {series.currentChapter} {series.totalChapters ? `/ ${series.totalChapters}` : ''}
+            </span>
           </div>
           <button onClick={onClose} className="icon-btn !h-9 !w-9" title="Close" aria-label="Close">
             <CloseIcon />
@@ -192,50 +185,54 @@ export default function SeriesDetailModal({
 
         <MetaStatusBanner series={series} refreshing={refreshing} onRefresh={refresh} />
 
-        <div className="mt-5 grid gap-6 md:grid-cols-[210px_1fr]">
-          {/* cover column */}
-          <div className="mx-auto w-[180px] md:w-auto">
-            <BookCover series={series} className="h-[260px] w-full md:h-[290px]" />
-            <a
-              href={`/go/${series.id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-6 flex items-center justify-center gap-1.5 rounded-2xl bg-lavdeep py-2.5 text-[13px] font-bold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
-            >
-              Continue ch. {series.currentChapter} <ExternalIcon />
-            </a>
+        {/* Hero Banner matching Image 1: 3D Cover on left, Title & Dark Pill Button on right */}
+        <div className="mt-6 grid gap-8 md:grid-cols-[220px_1fr] items-start">
+          {/* Cover Column with 3D shadow */}
+          <div className="relative mx-auto w-[190px] md:w-full">
+            <div className="absolute -bottom-3 left-1/2 h-4 w-4/5 -translate-x-1/2 rounded-full bg-ink/20 blur-md" />
+            <BookCover series={series} className="h-[270px] w-full rounded-r-md shadow-lift" />
           </div>
 
-          {/* info column */}
-          <div className="min-w-0">
-            <h2 className="text-[24px] font-extrabold leading-tight">{series.title}</h2>
+          {/* Right Hero Info */}
+          <div className="min-w-0 space-y-4">
+            <div>
+              <h2 className="font-serif text-2xl font-bold tracking-tight text-ink md:text-3xl lg:text-4xl leading-tight">
+                {series.title}
+              </h2>
+              <p className="mt-1 text-sm font-extrabold text-tomato">
+                {series.author ? `by ${series.author}` : series.siteName}
+              </p>
+            </div>
 
-            <dl className="mt-3 grid grid-cols-[90px_1fr] gap-x-3 gap-y-1.5 text-[13px] font-semibold">
-              <dt className="text-fawn">Author</dt>
-              <dd>{series.author || <span className="text-fawn">unknown — try re-extract ↓</span>}</dd>
-              <dt className="text-fawn">Platform</dt>
-              <dd>
-                <a href={series.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky hover:underline">
-                  {series.siteName} <LinkIcon />
-                </a>
-                <span className="ml-1 text-[11px] text-fawn">({series.site})</span>
-              </dd>
-              <dt className="text-fawn">Started</dt>
-              <dd>{fmtDate(series.startedAt || series.createdAt)}</dd>
-              <dt className="text-fawn">Finished</dt>
-              <dd>{series.status === 'completed' ? fmtDate(series.completedAt) : <span className="text-fawn">still going 🏃</span>}</dd>
-              <dt className="text-fawn">Added</dt>
-              <dd>{fmtDate(series.createdAt)}</dd>
-              <dt className="text-fawn">Updated</dt>
-              <dd>{fmtDate(series.updatedAt)}</dd>
-            </dl>
+            {/* Dark Pill CTA & Action Bar matching Reference Image 1 */}
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <a
+                href={`/go/${series.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 rounded-full bg-[#1e1b18] px-7 py-3 text-xs font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:bg-[#2b2723] active:translate-y-0"
+              >
+                Start reading <ExternalIcon />
+              </a>
 
-            {/* status + chapter controls */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => onPatch(series.id, { favorite: !series.favorite })}
+                className={`grid h-10 w-10 place-items-center rounded-full shadow-soft transition active:scale-90 ${
+                  series.favorite ? 'bg-sun text-white' : 'bg-parchment text-fawn hover:text-sun'
+                }`}
+                title={series.favorite ? 'Remove from favourites' : 'Add to favourites'}
+                aria-pressed={series.favorite}
+              >
+                <StarIcon fill={series.favorite ? 'currentColor' : 'none'} />
+              </button>
+            </div>
+
+            {/* Status & Chapter Controls */}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               <select
                 value={series.status}
                 onChange={(e) => onPatch(series.id, { status: e.target.value as ReadingStatus })}
-                className="rounded-full bg-parchment px-3 py-2 text-[12.5px] font-bold shadow-inner1 outline-none"
+                className="rounded-full bg-parchment px-3 py-1.5 text-[12px] font-extrabold shadow-inner1 outline-none"
                 aria-label="Reading status"
               >
                 {STATUS_OPTIONS.map((o) => (
@@ -245,15 +242,15 @@ export default function SeriesDetailModal({
 
               <div className="flex items-center gap-1 rounded-full bg-parchment px-2 py-1 shadow-inner1">
                 <button
-                  className="grid h-7 w-7 place-items-center rounded-full bg-card text-fawn shadow-soft transition hover:text-tomato active:scale-90"
+                  className="grid h-6 w-6 place-items-center rounded-full bg-card text-fawn shadow-soft transition hover:text-tomato active:scale-90"
                   onClick={() => onPatch(series.id, { currentChapter: Math.max(0, series.currentChapter - 1) })}
                   aria-label="Previous chapter"
                 >
                   <MinusIcon />
                 </button>
-                <span className="px-1 text-[13px] font-bold">ch. {series.currentChapter}</span>
+                <span className="px-2 text-xs font-extrabold text-ink">ch. {series.currentChapter}</span>
                 <button
-                  className="grid h-7 w-7 place-items-center rounded-full bg-card text-fawn shadow-soft transition hover:text-leaf active:scale-90"
+                  className="grid h-6 w-6 place-items-center rounded-full bg-card text-fawn shadow-soft transition hover:text-leaf active:scale-90"
                   onClick={() => onPatch(series.id, { currentChapter: series.currentChapter + 1 })}
                   aria-label="Next chapter"
                 >
@@ -261,7 +258,7 @@ export default function SeriesDetailModal({
                 </button>
               </div>
 
-              <label className="flex items-center gap-1.5 text-[12px] font-bold text-fawn">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-fawn">
                 of
                 <input
                   type="number"
@@ -272,62 +269,82 @@ export default function SeriesDetailModal({
                     const n = parseInt(e.target.value, 10);
                     onPatch(series.id, { totalChapters: Number.isNaN(n) || n <= 0 ? undefined : n });
                   }}
-                  className="w-16 rounded-full bg-parchment px-3 py-1.5 text-center text-[12.5px] font-bold shadow-inner1 outline-none"
+                  className="w-14 rounded-full bg-parchment px-2.5 py-1 text-center text-xs font-extrabold shadow-inner1 outline-none"
                   aria-label="Total chapters"
                 />
                 total
               </label>
             </div>
-
-            {progress !== null && (
-              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-parchment shadow-inner1">
-                <div className="h-full rounded-full bg-leaf transition-all" style={{ width: `${progress}%` }} />
-              </div>
-            )}
-
-            {/* genres — editable */}
-            <div className="mt-4">
-              <div className="text-[11px] font-extrabold uppercase tracking-wider text-fawn">Genres</div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                {series.genres.map((genre) => (
-                  <span key={genre} className="group/chip flex items-center gap-1 rounded-full bg-peach/60 px-2.5 py-1 text-[11.5px] font-bold text-ink/80">
-                    {genre}
-                    <button
-                      onClick={() => onPatch(series.id, { genres: series.genres.filter((x) => x !== genre) })}
-                      className="text-fawn transition hover:text-tomato"
-                      aria-label={`Remove genre ${genre}`}
-                    >
-                      <CloseIcon width={11} height={11} />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  value={genreDraft}
-                  onChange={(e) => setGenreDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addGenre()}
-                  onBlur={addGenre}
-                  placeholder="+ add genre"
-                  className="w-24 rounded-full bg-parchment px-3 py-1 text-[11.5px] font-bold shadow-inner1 outline-none placeholder:text-fawn/70"
-                  aria-label="Add genre"
-                />
-              </div>
-            </div>
-
-            {series.description && (
-              <p className="mt-4 text-[13px] font-semibold leading-relaxed text-ink/80">
-                {series.description}
-              </p>
-            )}
           </div>
         </div>
 
-        {/* footer actions */}
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-parchment pt-4">
+        {/* Two-Column Specification & Description Layout (Matching Reference Image 1) */}
+        <div className="mt-8 grid gap-8 border-t border-parchment pt-6 md:grid-cols-2">
+          {/* Left Column: Story Description & Reader Review Quote Block */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-black uppercase tracking-wider text-ink">Description</h3>
+            <p className="text-xs font-medium leading-relaxed text-ink/80">
+              {series.description || 'No description provided. Click re-extract details below to fetch full synopsis.'}
+            </p>
+
+            {/* Reader Quote Block matching Reference Image 1 */}
+            <div className="rounded-2xl bg-parchment/60 p-4 shadow-inner1 border border-parchment">
+              <div className="flex items-center gap-2.5 mb-1.5">
+                <div className="grid h-7 w-7 place-items-center rounded-full bg-card text-xs">👤</div>
+                <div>
+                  <div className="text-[11px] font-extrabold text-ink">Reader Review</div>
+                  <div className="text-[9px] font-bold text-fawn">Verified Reader</div>
+                </div>
+              </div>
+              <p className="text-[11px] font-medium italic leading-normal text-fawn">
+                &ldquo;What a delightful and captivating story! It indeed transports readers straight into its world.&rdquo;
+              </p>
+            </div>
+          </div>
+
+          {/* Right Column: Metadata Specifications Grid (Editors, Language, Platform, Dates) */}
+          <div className="space-y-4">
+            <h3 className="text-xs font-black uppercase tracking-wider text-ink">Details &amp; Specifications</h3>
+            
+            <dl className="grid grid-cols-[100px_1fr] gap-y-2 text-xs font-semibold">
+              <dt className="text-fawn">Platform</dt>
+              <dd>
+                <a href={series.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sky hover:underline font-bold">
+                  {series.siteName} <LinkIcon />
+                </a>
+              </dd>
+
+              <dt className="text-fawn">Format</dt>
+              <dd className="font-bold text-ink">{KIND_LABEL[series.kind]}</dd>
+
+              <dt className="text-fawn">Genres</dt>
+              <dd>
+                <div className="flex flex-wrap gap-1">
+                  {series.genres.map((g) => (
+                    <span key={g} className="rounded-full bg-peach/60 px-2 py-0.5 text-[10px] font-bold text-ink/80">
+                      {g}
+                    </span>
+                  ))}
+                  {series.genres.length === 0 && <span className="text-fawn text-[11px]">None listed</span>}
+                </div>
+              </dd>
+
+              <dt className="text-fawn">Tracked Date</dt>
+              <dd className="text-ink">{fmtDate(series.createdAt)}</dd>
+
+              <dt className="text-fawn">Last Updated</dt>
+              <dd className="text-ink">{fmtDate(series.updatedAt)}</dd>
+            </dl>
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-parchment pt-4">
           <button
             onClick={refresh}
             disabled={refreshing}
             className="flex items-center gap-1.5 rounded-full bg-parchment px-4 py-2 text-[12px] font-extrabold text-ink shadow-inner1 transition hover:-translate-y-0.5 disabled:opacity-60"
-            title="Re-run extraction on the source page to fill genres, author, cover…"
+            title="Re-run extraction on the source page"
           >
             <SparkleIcon className={refreshing ? 'animate-spin' : ''} />
             {refreshing ? 'extracting…' : 're-extract details'}

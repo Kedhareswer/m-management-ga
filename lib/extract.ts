@@ -31,19 +31,24 @@ export async function extractMeta(url: string, ai?: AIConfig): Promise<Extracted
   if (process.env.DISABLE_PLAYWRIGHT !== '1') {
     try {
       const data = await browserExtract(url);
-      // A real browser hit a hard block — the plain-fetch fallback won't do
-      // better. Try TinyFish's fetcher (their infrastructure, not our IP)
-      // before reporting the block honestly.
+      // A real browser hit a hard block — try TinyFish's fetcher
       if (data.status === 'blocked') {
         const rescued = await tinyfishRescue(url, aiConfig);
         return rescued ?? normalize(url, data);
       }
       const enriched = data.html ? await enrichWithAI(data, data.html, url, aiConfig) : data;
-      return normalize(url, { ...enriched, extractor: 'playwright' });
+      const normalized = normalize(url, { ...enriched, extractor: 'playwright' });
+      if (normalized.status === 'partial') {
+        const rescued = await tinyfishRescue(url, aiConfig);
+        if (rescued && (rescued.status === 'ok' || rescued.coverUrl)) return rescued;
+      }
+      return normalized;
     } catch (err) {
       console.warn(
-        `[extract] browser extraction failed (${err instanceof Error ? err.message : err}), using fallback`
+        `[extract] browser extraction failed (${err instanceof Error ? err.message : err}), attempting TinyFish rescue`
       );
+      const rescued = await tinyfishRescue(url, aiConfig);
+      if (rescued && (rescued.status === 'ok' || rescued.coverUrl)) return rescued;
     }
   }
   return fallbackExtract(url, aiConfig);
@@ -176,7 +181,23 @@ async function fallbackExtract(url: string, ai?: AIConfig): Promise<ExtractedMet
     extractor: 'fallback',
   };
   const enriched = ai ? await enrichWithAI(base, html, url, ai) : base;
-  return normalize(url, enriched);
+  const result = normalize(url, enriched);
+  if (result.status === 'partial' || !result.coverUrl || result.genres.length === 0) {
+    const rescued = await tinyfishRescue(url, ai);
+    if (rescued && (rescued.status === 'ok' || rescued.coverUrl || rescued.genres.length > 0)) {
+      return {
+        ...result,
+        ...rescued,
+        title: rescued.title || result.title,
+        coverUrl: rescued.coverUrl || result.coverUrl,
+        genres: rescued.genres.length > 0 ? rescued.genres : result.genres,
+        author: rescued.author || result.author,
+        description: rescued.description || result.description,
+        status: rescued.status,
+      };
+    }
+  }
+  return result;
 }
 
 function normalize(url: string, partial: Partial<ExtractedMeta>): ExtractedMeta {

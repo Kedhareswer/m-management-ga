@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { GridIcon, StarIcon, HeartIcon, PlayIcon, BookmarkIcon, BellIcon } from './icons';
 
+import type { Series } from '@/lib/types';
+import BookCover from './BookCover';
+
 export type NavFilter = 'all' | 'favorites' | 'completed' | 'reading' | 'plan-to-read';
 
 const NAV: { id: NavFilter; icon: typeof GridIcon; label: string }[] = [
@@ -13,16 +16,16 @@ const NAV: { id: NavFilter; icon: typeof GridIcon; label: string }[] = [
   { id: 'plan-to-read', icon: BookmarkIcon, label: 'Up next' },
 ];
 
-/**
- * Navigation, twice: a vertical rail on tablet/desktop and a floating
- * bottom bar on phones — same filters, same active state.
- */
 export default function Sidebar({
   active,
   onPick,
+  currentSeries,
+  onOpenReader,
 }: {
   active: NavFilter;
   onPick: (id: NavFilter) => void;
+  currentSeries?: Series | null;
+  onOpenReader?: (series: Series) => void;
 }) {
   const [toast, setToast] = useState<string | null>(null);
 
@@ -30,14 +33,14 @@ export default function Sidebar({
     <>
       {/* vertical rail — tablet & desktop */}
       <aside
-        className="relative hidden w-[88px] shrink-0 flex-col items-center py-7 md:flex"
+        className="relative hidden w-[96px] shrink-0 flex-col items-center py-6 md:flex"
         data-intro="sidebar"
       >
-        <div className="grid h-14 w-14 place-items-center rounded-full bg-card shadow-soft" title="You">
+        <div className="grid h-12 w-12 place-items-center rounded-full bg-card shadow-soft" title="You">
           <span className="text-2xl" role="img" aria-label="reader avatar">🍊</span>
         </div>
 
-        <nav className="mt-10 flex flex-col gap-4">
+        <nav className="mt-8 flex flex-col gap-3">
           {NAV.map(({ id, icon: Icon, label }) => {
             const isActive = active === id;
             return (
@@ -55,7 +58,24 @@ export default function Sidebar({
           })}
         </nav>
 
-        <div className="relative mt-auto flex flex-col items-center gap-4">
+        <div className="relative mt-auto flex flex-col items-center gap-3 w-full px-1">
+          {/* "Currently reading" Mini Card Widget matching Reference Image 2 (bottom left) */}
+          {currentSeries && (
+            <button
+              onClick={() => onOpenReader?.(currentSeries)}
+              className="group relative flex w-full flex-col items-center rounded-2xl bg-card p-2 shadow-soft transition hover:-translate-y-1 hover:shadow-lift"
+              title={`Continue reading ${currentSeries.title}`}
+            >
+              <div className="text-[9px] font-extrabold text-tomato uppercase tracking-wider mb-1">
+                Reading
+              </div>
+              <BookCover series={currentSeries} className="h-16 w-11 rounded shadow-sm group-hover:scale-105 transition-transform" />
+              <div className="mt-1 max-w-full truncate text-[10px] font-bold text-ink text-center">
+                ch. {currentSeries.currentChapter}
+              </div>
+            </button>
+          )}
+
           <button
             className="icon-btn !bg-sky !text-white"
             title="Notifications"
@@ -72,11 +92,6 @@ export default function Sidebar({
               {toast}
             </div>
           )}
-          <div className="flex h-28 w-11 items-center justify-center rounded-full bg-sky text-white shadow-soft">
-            <span className="rotate-180 text-[11px] font-bold tracking-widest" style={{ writingMode: 'vertical-rl' }}>
-              mangashelf
-            </span>
-          </div>
         </div>
       </aside>
 

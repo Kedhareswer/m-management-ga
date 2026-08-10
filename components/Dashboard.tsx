@@ -15,6 +15,11 @@ import StatsBanner from './StatsBanner';
 import ChatPanel from './ChatPanel';
 import { ChevronIcon, RefreshIcon, LinkIcon, ShieldIcon, EyeOffIcon } from './icons';
 
+import SplashScreen from './SplashScreen';
+import InAppBrowserModal from './InAppBrowserModal';
+import HeroFeaturedBook from './HeroFeaturedBook';
+import WoodenShelf from './WoodenShelf';
+
 export interface AddOutcome {
   seriesId: string;
   metaStatus?: Series['metaStatus'];
@@ -47,6 +52,8 @@ export default function Dashboard() {
   const [addOpen, setAddOpen] = useState(false);
   const [addPrefill, setAddPrefill] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'shelf' | 'grid'>('shelf');
+  const [readerState, setReaderState] = useState<{ series: Series | null; overrideUrl?: string } | null>(null);
   // Safe mode hides adult (nsfw) series. On by default; remembered locally.
   const [safeMode, setSafeMode] = useState(true);
   useEffect(() => {
@@ -289,179 +296,274 @@ export default function Dashboard() {
   const headerLabel = navFilter !== 'all' ? NAV_LABEL[navFilter] : genre === 'All' ? 'Your shelf' : genre;
 
   return (
-    <div ref={rootRef} className="flex h-screen w-full gap-2 overflow-hidden bg-shell p-2 [height:100dvh] md:p-3">
-      <div className="flex min-w-0 flex-1 gap-2 overflow-hidden rounded-panel bg-parchment p-3 shadow-lift md:p-6">
-        <Sidebar active={navFilter} onPick={setNavFilter} />
+    <>
+      <SplashScreen loading={library === null && !loadError} />
 
-        {/* main scrolling column */}
-        <main
-          ref={scrollHostRef}
-          className="h-full min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-panel px-1 pb-24 md:px-4 md:pb-0"
-        >
-          <div className="sticky top-0 z-10 -mx-1 bg-parchment/95 px-1 pb-4 pt-2 backdrop-blur-sm md:-mx-4 md:px-4">
-            <AddBar
-              query={query}
-              onQuery={setQuery}
-              onOpenAdd={() => {
-                setAddPrefill('');
-                setAddOpen(true);
-              }}
-              readingCount={readingCount}
-              chatOpen={chatOpen}
-              onToggleChat={() => setChatOpen((v) => !v)}
-            />
+      <div ref={rootRef} className="flex h-screen w-full gap-2 overflow-hidden bg-shell p-2 [height:100dvh] md:p-3">
+        <div className="flex min-w-0 flex-1 gap-2 overflow-hidden rounded-panel bg-parchment p-3 shadow-lift md:p-6">
+          <Sidebar
+            active={navFilter}
+            onPick={setNavFilter}
+            currentSeries={shelf.find((s) => s.status === 'reading') || shelf[0]}
+            onOpenReader={(series) => setReaderState({ series })}
+          />
 
-            {isUrlQuery && (
-              <button
-                onClick={() => {
-                  setAddPrefill(query.trim());
+          {/* main scrolling column */}
+          <main
+            ref={scrollHostRef}
+            className="h-full min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-panel px-1 pb-24 md:px-4 md:pb-0"
+          >
+            <div className="sticky top-0 z-10 -mx-1 bg-parchment/95 px-1 pb-4 pt-2 backdrop-blur-sm md:-mx-4 md:px-4">
+              <AddBar
+                query={query}
+                onQuery={setQuery}
+                onOpenAdd={() => {
+                  setAddPrefill('');
                   setAddOpen(true);
-                  setQuery('');
                 }}
-                className="mt-3 flex w-full items-center gap-2 rounded-full bg-lav/50 px-4 py-2 text-left text-[12.5px] font-bold text-ink transition hover:bg-lav/70"
-              >
-                <LinkIcon className="shrink-0 text-lavdeep" />
-                That looks like a link — add it to your shelf instead of searching for it?
-              </button>
-            )}
+                readingCount={readingCount}
+                chatOpen={chatOpen}
+                onToggleChat={() => setChatOpen((v) => !v)}
+              />
 
-            <div className="mt-5">
-              <GenreChips genres={genres} active={genre} onPick={setGenre} />
-            </div>
-          </div>
-
-          <section className="mt-2">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[19px] font-extrabold">
-                {headerLabel}
-                <span className="ml-2 text-[13px] font-bold text-fawn">{visible.length}</span>
-              </h2>
-              <div className="flex items-center gap-2">
+              {isUrlQuery && (
                 <button
-                  onClick={toggleSafeMode}
-                  className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-extrabold shadow-soft transition hover:-translate-y-0.5 ${
-                    safeMode ? 'bg-leaf/20 text-leaf' : 'bg-tomato/15 text-tomato'
-                  }`}
-                  title={
-                    safeMode
-                      ? `Safe mode on — adult series hidden${hiddenNsfw > 0 ? ` (${hiddenNsfw})` : ''}`
-                      : 'Safe mode off — showing adult series'
-                  }
-                  aria-pressed={safeMode}
+                  onClick={() => {
+                    setAddPrefill(query.trim());
+                    setAddOpen(true);
+                    setQuery('');
+                  }}
+                  className="mt-3 flex w-full items-center gap-2 rounded-full bg-lav/50 px-4 py-2 text-left text-[12.5px] font-bold text-ink transition hover:bg-lav/70"
                 >
-                  {safeMode ? <ShieldIcon /> : <EyeOffIcon />}
-                  {safeMode ? 'Safe' : '18+'}
-                  {safeMode && hiddenNsfw > 0 && (
-                    <span className="rounded-full bg-leaf/30 px-1.5 text-[10px]">{hiddenNsfw}</span>
-                  )}
+                  <LinkIcon className="shrink-0 text-lavdeep" />
+                  That looks like a link — add it to your shelf instead of searching for it?
                 </button>
-                <button className="hidden rounded-full bg-card px-4 py-1.5 text-[12px] font-bold text-fawn shadow-soft transition hover:text-ink sm:block" onClick={clearFilters}>
-                  View All
-                </button>
-                <button className="icon-btn !h-8 !w-8 rotate-180" aria-label="Scroll shelf left" onClick={() => shelfRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}>
-                  <ChevronIcon />
-                </button>
-                <button className="icon-btn !h-8 !w-8" aria-label="Scroll shelf right" onClick={() => shelfRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}>
-                  <ChevronIcon />
-                </button>
+              )}
+
+              <div className="mt-5">
+                <GenreChips genres={genres} active={genre} onPick={setGenre} />
               </div>
             </div>
 
-            <div
-              ref={shelfRef}
-              data-lenis-prevent
-              className="mt-4 flex gap-4 overflow-x-auto pb-6 pt-2"
-            >
-              {library === null && !loadError ? (
-                [...Array(4)].map((_, i) => (
-                  <div key={i} className="h-[380px] w-[196px] shrink-0 animate-pulse rounded-blob bg-card/70" />
-                ))
-              ) : loadError ? (
-                <div className="flex h-[300px] w-full flex-col items-center justify-center gap-3 text-center">
-                  <span className="text-4xl">⚠️</span>
-                  <p className="text-[14px] font-bold text-fawn">
-                    Couldn&apos;t load your shelf — {loadError}
-                  </p>
+            {/* Featured Hero Book Banner matching design reference 1 & 4 */}
+            {visible.length > 0 && (
+              <HeroFeaturedBook
+                series={visible.find((s) => s.status === 'reading') || visible[0]}
+                onOpenReader={(series) => setReaderState({ series })}
+                onToggleFavorite={toggleFavorite}
+              />
+            )}
+
+            <section className="mt-2">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[19px] font-extrabold">
+                  {headerLabel}
+                  <span className="ml-2 text-[13px] font-bold text-fawn">{visible.length}</span>
+                </h2>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={refresh}
-                    className="flex items-center gap-2 rounded-full bg-tomato px-5 py-2 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                    onClick={toggleSafeMode}
+                    className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-extrabold shadow-soft transition hover:-translate-y-0.5 ${
+                      safeMode ? 'bg-leaf/20 text-leaf' : 'bg-tomato/15 text-tomato'
+                    }`}
+                    title={
+                      safeMode
+                        ? `Safe mode on — adult series hidden${hiddenNsfw > 0 ? ` (${hiddenNsfw})` : ''}`
+                        : 'Safe mode off — showing adult series'
+                    }
+                    aria-pressed={safeMode}
                   >
-                    <RefreshIcon /> try again
+                    {safeMode ? <ShieldIcon /> : <EyeOffIcon />}
+                    {safeMode ? 'Safe' : '18+'}
+                    {safeMode && hiddenNsfw > 0 && (
+                      <span className="rounded-full bg-leaf/30 px-1.5 text-[10px]">{hiddenNsfw}</span>
+                    )}
                   </button>
-                </div>
-              ) : !library || library.length === 0 ? (
-                <div className="flex h-[300px] w-full flex-col items-center justify-center gap-2 text-center">
-                  <span className="text-4xl">🏜️</span>
-                  <p className="text-[14px] font-bold text-fawn">
-                    Nothing here yet — tap <strong>+ add</strong> above
-                    <br /> and paste a link, I&apos;ll shelve it with all its details.
-                  </p>
-                </div>
-              ) : visible.length === 0 ? (
-                <div className="flex h-[300px] w-full flex-col items-center justify-center gap-3 text-center">
-                  <span className="text-4xl">🔍</span>
-                  <p className="text-[14px] font-bold text-fawn">
-                    Nothing matches this filter.
-                  </p>
-                  <button
-                    onClick={clearFilters}
-                    className="rounded-full bg-card px-5 py-2 text-[13px] font-extrabold text-ink shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
-                  >
-                    Clear filters
+                  <div className="flex items-center rounded-full bg-card p-1 shadow-soft">
+                    <button
+                      onClick={() => setViewMode('shelf')}
+                      className={`rounded-full px-3 py-1 text-[11.5px] font-extrabold transition ${
+                        viewMode === 'shelf' ? 'bg-lavdeep text-white shadow-soft' : 'text-fawn hover:text-ink'
+                      }`}
+                      title="Shelf View (Horizontal Carousel)"
+                    >
+                      Shelf
+                    </button>
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`rounded-full px-3 py-1 text-[11.5px] font-extrabold transition ${
+                        viewMode === 'grid' ? 'bg-lavdeep text-white shadow-soft' : 'text-fawn hover:text-ink'
+                      }`}
+                      title="Grid View (Gallery Layout)"
+                    >
+                      Grid
+                    </button>
+                  </div>
+                  <button className="hidden rounded-full bg-card px-4 py-1.5 text-[12px] font-bold text-fawn shadow-soft transition hover:text-ink sm:block" onClick={clearFilters}>
+                    View All
                   </button>
+                  {viewMode === 'shelf' && (
+                    <>
+                      <button className="icon-btn !h-8 !w-8 rotate-180" aria-label="Scroll shelf left" onClick={() => shelfRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}>
+                        <ChevronIcon />
+                      </button>
+                      <button className="icon-btn !h-8 !w-8" aria-label="Scroll shelf right" onClick={() => shelfRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}>
+                        <ChevronIcon />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* If on main 'all' shelf view and no active search query, render grouped physical wooden shelves (Readowl style) */}
+              {navFilter === 'all' && !query && genre === 'All' ? (
+                <div className="mt-6 space-y-6">
+                  <WoodenShelf
+                    title="📖 Currently Reading"
+                    seriesList={visible.filter((s) => s.status === 'reading')}
+                    viewMode={viewMode}
+                    onChapterChange={changeChapter}
+                    onToggleFavorite={toggleFavorite}
+                    onDelete={removeSeries}
+                    onOpen={setDetailId}
+                    onOpenReader={(series) => setReaderState({ series })}
+                  />
+                  <WoodenShelf
+                    title="🔜 Up Next"
+                    seriesList={visible.filter((s) => s.status === 'plan-to-read')}
+                    viewMode={viewMode}
+                    onChapterChange={changeChapter}
+                    onToggleFavorite={toggleFavorite}
+                    onDelete={removeSeries}
+                    onOpen={setDetailId}
+                    onOpenReader={(series) => setReaderState({ series })}
+                  />
+                  <WoodenShelf
+                    title="✅ Finished"
+                    seriesList={visible.filter((s) => s.status === 'completed')}
+                    viewMode={viewMode}
+                    onChapterChange={changeChapter}
+                    onToggleFavorite={toggleFavorite}
+                    onDelete={removeSeries}
+                    onOpen={setDetailId}
+                    onOpenReader={(series) => setReaderState({ series })}
+                  />
                 </div>
               ) : (
-                visible.map((s) => (
-                  <div key={s.id} data-card-id={s.id} className="shrink-0">
-                    <MangaCard
-                      series={s}
-                      onChapterChange={changeChapter}
-                      onToggleFavorite={toggleFavorite}
-                      onDelete={removeSeries}
-                      onOpen={setDetailId}
-                    />
-                  </div>
-                ))
+                <div
+                  ref={shelfRef}
+                  data-lenis-prevent
+                  className={
+                    viewMode === 'shelf'
+                      ? 'mt-4 flex gap-4 overflow-x-auto pb-6 pt-2'
+                      : 'mt-4 grid grid-cols-2 gap-4 pb-6 pt-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+                  }
+                >
+                  {library === null && !loadError ? (
+                    [...Array(4)].map((_, i) => (
+                      <div key={i} className="h-[380px] w-[196px] shrink-0 animate-pulse rounded-blob bg-card/70" />
+                    ))
+                  ) : loadError ? (
+                    <div className="col-span-full flex h-[300px] w-full flex-col items-center justify-center gap-3 text-center">
+                      <span className="text-4xl">⚠️</span>
+                      <p className="text-[14px] font-bold text-fawn">
+                        Couldn&apos;t load your shelf — {loadError}
+                      </p>
+                      <button
+                        onClick={refresh}
+                        className="flex items-center gap-2 rounded-full bg-tomato px-5 py-2 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                      >
+                        <RefreshIcon /> try again
+                      </button>
+                    </div>
+                  ) : !library || library.length === 0 ? (
+                    <div className="col-span-full flex h-[300px] w-full flex-col items-center justify-center gap-2 text-center">
+                      <span className="text-4xl">🏜️</span>
+                      <p className="text-[14px] font-bold text-fawn">
+                        Nothing here yet — tap <strong>+ add</strong> above
+                        <br /> and paste a link, I&apos;ll shelve it with all its details.
+                      </p>
+                    </div>
+                  ) : visible.length === 0 ? (
+                    <div className="col-span-full flex h-[300px] w-full flex-col items-center justify-center gap-3 text-center">
+                      <span className="text-4xl">🔍</span>
+                      <p className="text-[14px] font-bold text-fawn">
+                        Nothing matches this filter.
+                      </p>
+                      <button
+                        onClick={clearFilters}
+                        className="rounded-full bg-card px-5 py-2 text-[13px] font-extrabold text-ink shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  ) : (
+                    visible.map((s) => (
+                      <div key={s.id} data-card-id={s.id} className={viewMode === 'shelf' ? 'w-[196px] shrink-0' : 'w-full'}>
+                        <MangaCard
+                          series={s}
+                          onChapterChange={changeChapter}
+                          onToggleFavorite={toggleFavorite}
+                          onDelete={removeSeries}
+                          onOpen={setDetailId}
+                          onOpenReader={(series) => setReaderState({ series })}
+                        />
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
-            </div>
-          </section>
+            </section>
 
-          {library && library.length > 0 && <StatsBanner library={library} />}
+            {library && library.length > 0 && <StatsBanner library={library} />}
 
-          <footer className="py-8 text-center text-[11px] font-bold text-fawn/70">
-            MangaShelf · your chapters, remembered 🔖
-          </footer>
-        </main>
+            <footer className="py-8 text-center text-[11px] font-bold text-fawn/70">
+              MangaShelf · your chapters, remembered 🔖
+            </footer>
+          </main>
 
-        {chatOpen && (
-          <ChatPanel onLibraryChange={refresh} onClose={() => setChatOpen(false)} onAddSeries={addByUrl} />
+          {chatOpen && (
+            <ChatPanel
+              onLibraryChange={refresh}
+              onClose={() => setChatOpen(false)}
+              onAddSeries={addByUrl}
+              onOpenReaderUrl={(url, s) => setReaderState({ series: s || null, overrideUrl: url })}
+            />
+          )}
+        </div>
+
+        <AddMangaModal
+          open={addOpen}
+          initialUrl={addPrefill}
+          onClose={() => setAddOpen(false)}
+          onAdd={addByUrl}
+          onOpenSeries={(id) => {
+            setAddOpen(false);
+            setDetailId(id);
+          }}
+        />
+
+        <SeriesDetailModal
+          series={library?.find((s) => s.id === detailId) ?? null}
+          onClose={() => setDetailId(null)}
+          onPatch={patchSeries}
+          onDelete={removeSeries}
+          onRefreshMeta={refreshMeta}
+        />
+
+        <InAppBrowserModal
+          series={readerState?.series ?? null}
+          overrideUrl={readerState?.overrideUrl}
+          onClose={() => setReaderState(null)}
+          onChapterChange={changeChapter}
+        />
+
+        {toast && (
+          <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-5 py-2.5 text-[13px] font-bold text-parchment shadow-lift md:bottom-6">
+            {toast}
+          </div>
         )}
       </div>
-
-      <AddMangaModal
-        open={addOpen}
-        initialUrl={addPrefill}
-        onClose={() => setAddOpen(false)}
-        onAdd={addByUrl}
-        onOpenSeries={(id) => {
-          setAddOpen(false);
-          setDetailId(id);
-        }}
-      />
-
-      <SeriesDetailModal
-        series={library?.find((s) => s.id === detailId) ?? null}
-        onClose={() => setDetailId(null)}
-        onPatch={patchSeries}
-        onDelete={removeSeries}
-        onRefreshMeta={refreshMeta}
-      />
-
-      {toast && (
-        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-5 py-2.5 text-[13px] font-bold text-parchment shadow-lift md:bottom-6">
-          {toast}
-        </div>
-      )}
-    </div>
+    </>
   );
 }

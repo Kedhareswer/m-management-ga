@@ -37,10 +37,11 @@ export function webSearchEnabled(): boolean {
 const g = globalThis as typeof globalThis & { __tinyfish?: TinyFish };
 
 function getClient(): TinyFish | null {
-  if (!TINYFISH_API_KEY) return null;
+  const key = process.env.TINYFISH_API_KEY?.trim();
+  if (!key) return null;
   if (!g.__tinyfish) {
     g.__tinyfish = new TinyFish({
-      apiKey: TINYFISH_API_KEY,
+      apiKey: key,
       baseURL: TINYFISH_BASE_URL,
       timeout: 20_000,
     });
