@@ -7,6 +7,7 @@ import { politeGate } from './ratelimit';
 import { getFetch } from './proxy';
 import { webFetchContent, webSearchEnabled } from './websearch';
 import type { AIConfig } from './ai';
+import { getHardcodedAIConfig } from './ai';
 
 const KNOWN_GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Dark Fantasy', 'Horror',
@@ -21,11 +22,11 @@ const KNOWN_GENRES = [
  * readers), fall back to a plain fetch + meta-tag parse when the browser
  * can't launch or the page won't load.
  *
- * When an AI config is provided, the LLM reads the page text and extracts
- * genres/author/kind/nsfw — far more reliable than DOM heuristics across the
- * dozens of bespoke reader layouts. Heuristics remain the no-key fallback.
+ * Automatically uses NVIDIA LLM extraction to read page text and extract
+ * genres/author/kind/nsfw reliably across bespoke reader layouts.
  */
 export async function extractMeta(url: string, ai?: AIConfig): Promise<ExtractedMeta> {
+  const aiConfig = ai ?? getHardcodedAIConfig();
   await politeGate(url); // don't hammer the source site
   if (process.env.DISABLE_PLAYWRIGHT !== '1') {
     try {
@@ -34,10 +35,10 @@ export async function extractMeta(url: string, ai?: AIConfig): Promise<Extracted
       // better. Try TinyFish's fetcher (their infrastructure, not our IP)
       // before reporting the block honestly.
       if (data.status === 'blocked') {
-        const rescued = await tinyfishRescue(url, ai);
+        const rescued = await tinyfishRescue(url, aiConfig);
         return rescued ?? normalize(url, data);
       }
-      const enriched = ai && data.html ? await enrichWithAI(data, data.html, url, ai) : data;
+      const enriched = data.html ? await enrichWithAI(data, data.html, url, aiConfig) : data;
       return normalize(url, { ...enriched, extractor: 'playwright' });
     } catch (err) {
       console.warn(
@@ -45,7 +46,7 @@ export async function extractMeta(url: string, ai?: AIConfig): Promise<Extracted
       );
     }
   }
-  return fallbackExtract(url, ai);
+  return fallbackExtract(url, aiConfig);
 }
 
 /** Merge LLM-read metadata over heuristic data — the LLM wins for the fields

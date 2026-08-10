@@ -1,11 +1,10 @@
+import axios from 'axios';
+
 /**
- * LLM provider layer. Requesty (https://requesty.ai) is an OpenAI-compatible
- * router, so this is a thin chat-completions client pointed at it.
+ * LLM provider layer targeting NVIDIA API (OpenAI-compatible completions).
  *
- * The API key is SESSION-BASED by design: the user pastes it into the chat
- * settings each session, the browser keeps it in sessionStorage, and it
- * travels per-request in the `x-ai-key` header. Nothing is persisted
- * server-side.
+ * Uses axios for HTTP calls with hardcoded API key fallback to ensure
+ * zero-setup AI features out of the box.
  */
 
 export interface AIConfig {
@@ -19,19 +18,27 @@ export interface AIMessage {
   content: string;
 }
 
+export const HARDCODED_API_KEY =
+  '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';
+export const DEFAULT_INVOKE_URL =
+  'https://integrate.api.nvidia.com/v1/chat/completions';
 export const DEFAULT_MODEL = process.env.AI_MODEL || 'google/gemma-4-31b-it';
-export const DEFAULT_BASE_URL =
-  process.env.REQUESTY_BASE_URL || 'https://router.requesty.ai/v1';
+
+export function getHardcodedAIConfig(): AIConfig {
+  return {
+    apiKey: HARDCODED_API_KEY,
+    model: DEFAULT_MODEL,
+    baseUrl: DEFAULT_INVOKE_URL,
+  };
+}
 
 export interface ChatCompletion {
   /** The model's answer, with any inline reasoning tags already stripped out. */
   content: string;
   /**
    * Chain-of-thought, when the model/router exposes it — either as a
-   * dedicated `reasoning`/`reasoning_content` field (OpenRouter/Requesty
-   * pass-through convention for reasoning models) or inline
-   * <think>/<thinking>/<reasoning> tags inside content. Never shown inline
-   * in the reply text; callers decide whether/how to surface it.
+   * dedicated `reasoning`/`reasoning_content` field or inline
+   * <think>/<thinking>/<reasoning> tags inside content.
    */
   reasoning?: string;
 }
@@ -43,47 +50,75 @@ export async function chatComplete(
   messages: AIMessage[],
   opts: { maxTokens?: number; temperature?: number } = {}
 ): Promise<ChatCompletion> {
-  const res = await fetch(`${cfg.baseUrl || DEFAULT_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${cfg.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: cfg.model || DEFAULT_MODEL,
-      messages,
-      temperature: opts.temperature ?? 0.7,
-      max_tokens: opts.maxTokens ?? 700,
-    }),
-    signal: AbortSignal.timeout(60_000),
-  });
+  const apiKey = cfg.apiKey?.trim() || HARDCODED_API_KEY;
+  const model = cfg.model?.trim() || DEFAULT_MODEL;
 
-  if (!res.ok) {
-    const body = (await res.text().catch(() => '')).slice(0, 300);
-    throw new Error(`Requesty ${res.status}: ${body || res.statusText}`);
+  let invokeUrl = DEFAULT_INVOKE_URL;
+  if (
+    cfg.baseUrl &&
+    !cfg.baseUrl.includes('router.requesty.ai') &&
+    cfg.baseUrl !== DEFAULT_INVOKE_URL
+  ) {
+    invokeUrl = cfg.baseUrl.endsWith('/chat/completions')
+      ? cfg.baseUrl
+      : `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   }
 
-  const data = await res.json();
-  const message = data?.choices?.[0]?.message;
-  let content = message?.content;
-  if (typeof content !== 'string') {
-    throw new Error('Requesty returned no message content');
-  }
-
-  // Some routers put reasoning in its own field (reasoning / reasoning_content).
-  const fieldReasoning: string | undefined = message?.reasoning || message?.reasoning_content;
-  const reasoningParts: string[] = fieldReasoning ? [fieldReasoning.trim()] : [];
-
-  // Others (or the model itself) embed it inline as <think>...</think> etc.
-  // — pull those out of content so they never leak into the visible reply.
-  content = content.replace(THINK_TAG_RE, (_match, _tag, inner) => {
-    const trimmed = inner.trim();
-    if (trimmed) reasoningParts.push(trimmed);
-    return '';
-  }).trim();
-
-  return {
-    content,
-    reasoning: reasoningParts.length > 0 ? reasoningParts.join('\n\n').slice(0, 4000) : undefined,
+  const stream = false;
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    Accept: stream ? 'text/event-stream' : 'application/json',
   };
+
+  const payload = {
+    messages,
+    model,
+    chat_template_kwargs: { enable_thinking: true },
+    max_tokens: opts.maxTokens ?? 4096,
+    stream,
+    temperature: opts.temperature ?? 1,
+    top_p: 0.95,
+  };
+
+  try {
+    const response = await axios.post(invokeUrl, payload, {
+      headers,
+      responseType: stream ? 'stream' : 'json',
+      timeout: 60_000,
+    });
+
+    const data = response.data;
+    const message = data?.choices?.[0]?.message;
+    let content = message?.content;
+    if (typeof content !== 'string') {
+      throw new Error('NVIDIA AI provider returned no message content');
+    }
+
+    const fieldReasoning: string | undefined = message?.reasoning || message?.reasoning_content;
+    const reasoningParts: string[] = fieldReasoning ? [fieldReasoning.trim()] : [];
+
+    content = content
+      .replace(THINK_TAG_RE, (_match, _tag, inner) => {
+        const trimmed = inner.trim();
+        if (trimmed) reasoningParts.push(trimmed);
+        return '';
+      })
+      .trim();
+
+    return {
+      content,
+      reasoning: reasoningParts.length > 0 ? reasoningParts.join('\n\n').slice(0, 4000) : undefined,
+    };
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response) {
+      const errDetail =
+        typeof error.response.data === 'string'
+          ? error.response.data
+          : JSON.stringify(error.response.data);
+      throw new Error(`NVIDIA API HTTP ${error.response.status}: ${errDetail.slice(0, 300)}`);
+    }
+    throw error;
+  }
 }
+

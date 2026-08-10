@@ -1,14 +1,16 @@
 import type { NextRequest } from 'next/server';
-import { DEFAULT_MODEL, type AIConfig } from './ai';
+import { DEFAULT_MODEL, getHardcodedAIConfig, type AIConfig } from './ai';
 
 /**
- * Build an AIConfig from the session key headers a request carries, or
- * undefined when there's no key. Keeps the "session-based key, never stored"
- * contract: the key only ever travels per-request in x-ai-key.
+ * Build an AIConfig from the request headers, or return the hardcoded NVIDIA AI config
+ * by default so AI metadata extraction and assistant features work out of the box.
  */
-export function aiConfigFromHeaders(req: NextRequest): AIConfig | undefined {
+export function aiConfigFromHeaders(req: NextRequest): AIConfig {
   const apiKey = req.headers.get('x-ai-key')?.trim();
-  if (!apiKey) return undefined;
   const model = req.headers.get('x-ai-model')?.trim() || DEFAULT_MODEL;
-  return { apiKey, model };
+  if (apiKey) {
+    return { apiKey, model };
+  }
+  return getHardcodedAIConfig();
 }
+

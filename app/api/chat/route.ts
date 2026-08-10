@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { listSeries, updateSeries } from '@/lib/store';
 import { answer } from '@/lib/bot';
 import { llmAnswer } from '@/lib/agent';
-import { DEFAULT_MODEL, type AIConfig } from '@/lib/ai';
+import { DEFAULT_MODEL, getHardcodedAIConfig, type AIConfig } from '@/lib/ai';
 import { appendMessages, clearMemory, compactIfNeeded, loadMemory } from '@/lib/memory';
 import { withErrors } from '@/lib/api';
 
@@ -24,12 +24,9 @@ export const DELETE = withErrors(async () => {
  * POST /api/chat { message }
  *
  * Provider selection per request:
- * - `x-ai-key` header present → Requesty (default model google/gemma-4-31b-it,
- *   overridable via `x-ai-model`). The key is session-based and never stored.
- * - no key → the built-in rule-based Mango, so chat always works.
- *
- * Either way the exchange is appended to persistent memory and the
- * transcript is compacted when it grows long.
+ * - Uses NVIDIA AI completions (default model google/gemma-4-31b-it)
+ *   with session-key override or default hardcoded credentials.
+ * - Always falls back gracefully to rule-based logic if a transient network error occurs.
  */
 export const POST = withErrors(async (req: NextRequest) => {
   let body: { message?: string };
@@ -45,34 +42,26 @@ export const POST = withErrors(async (req: NextRequest) => {
 
   const apiKey = req.headers.get('x-ai-key')?.trim() || '';
   const model = req.headers.get('x-ai-model')?.trim() || DEFAULT_MODEL;
-  const ai: AIConfig | undefined = apiKey ? { apiKey, model } : undefined;
+  const ai: AIConfig = apiKey ? { apiKey, model } : getHardcodedAIConfig();
   const safeMode = req.headers.get('x-safe-mode') !== '0';
 
   const [library, memory] = await Promise.all([listSeries(), loadMemory()]);
 
   let reply;
-  let provider: 'requesty' | 'rules' = 'rules';
+  let provider: 'nvidia' | 'rules' = 'rules';
 
-  if (ai) {
-    try {
-      reply = await llmAnswer(ai, message, library, memory.summary, memory.messages, { safeMode });
-      provider = 'requesty';
-    } catch (err) {
-      // Surface the failure, then still answer with the built-in brain.
-      // The AI config is passed along: if the main call failed transiently,
-      // the recommend pipeline can still use it on this retry path.
-      const detail = err instanceof Error ? err.message : 'unknown error';
-      const { reply: fallback, update } = await answer(message, library, ai, { safeMode });
-      if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
-      reply = {
-        ...fallback,
-        text: `⚠️ Requesty call failed (${detail.slice(0, 160)}) — answering with my built-in brain instead.\n\n${fallback.text}`,
-      };
-    }
-  } else {
-    const { reply: ruleReply, update } = await answer(message, library, undefined, { safeMode });
+  try {
+    reply = await llmAnswer(ai, message, library, memory.summary, memory.messages, { safeMode });
+    provider = 'nvidia';
+  } catch (err) {
+    // Surface the failure, then still answer with the built-in brain.
+    const detail = err instanceof Error ? err.message : 'unknown error';
+    const { reply: fallback, update } = await answer(message, library, ai, { safeMode });
     if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
-    reply = ruleReply;
+    reply = {
+      ...fallback,
+      text: `⚠️ AI API call notice (${detail.slice(0, 160)}) — answering with my built-in brain instead.\n\n${fallback.text}`,
+    };
   }
 
   // The recommend pipeline puts the substance (titles/links) in cards, not
