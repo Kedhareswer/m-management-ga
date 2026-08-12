@@ -1,13 +1,12 @@
 import type { ExtractedMeta, SeriesKind } from './types';
 import { detectChapterPattern } from './chapterUrl';
-import { browserExtract } from './playwright';
+import { browserExtract, isPlaywrightDisabled } from './playwright';
 import { detectBlock } from './botcheck';
 import { aiExtract, htmlToText } from './aiExtract';
 import { politeGate } from './ratelimit';
 import { getFetch } from './proxy';
 import { webFetchContent, webSearchEnabled } from './websearch';
 import type { AIConfig } from './ai';
-import { getHardcodedAIConfig } from './ai';
 
 const KNOWN_GENRES = [
   'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Dark Fantasy', 'Horror',
@@ -26,20 +25,19 @@ const KNOWN_GENRES = [
  * genres/author/kind/nsfw reliably across bespoke reader layouts.
  */
 export async function extractMeta(url: string, ai?: AIConfig): Promise<ExtractedMeta> {
-  const aiConfig = ai ?? getHardcodedAIConfig();
   await politeGate(url); // don't hammer the source site
-  if (process.env.DISABLE_PLAYWRIGHT !== '1') {
+  if (!isPlaywrightDisabled()) {
     try {
       const data = await browserExtract(url);
       // A real browser hit a hard block — try TinyFish's fetcher
       if (data.status === 'blocked') {
-        const rescued = await tinyfishRescue(url, aiConfig);
+        const rescued = await tinyfishRescue(url, ai);
         return rescued ?? normalize(url, data);
       }
-      const enriched = data.html ? await enrichWithAI(data, data.html, url, aiConfig) : data;
+      const enriched = data.html && ai ? await enrichWithAI(data, data.html, url, ai) : data;
       const normalized = normalize(url, { ...enriched, extractor: 'playwright' });
       if (normalized.status === 'partial') {
-        const rescued = await tinyfishRescue(url, aiConfig);
+        const rescued = await tinyfishRescue(url, ai);
         if (rescued && (rescued.status === 'ok' || rescued.coverUrl)) return rescued;
       }
       return normalized;
@@ -47,11 +45,11 @@ export async function extractMeta(url: string, ai?: AIConfig): Promise<Extracted
       console.warn(
         `[extract] browser extraction failed (${err instanceof Error ? err.message : err}), attempting TinyFish rescue`
       );
-      const rescued = await tinyfishRescue(url, aiConfig);
+      const rescued = await tinyfishRescue(url, ai);
       if (rescued && (rescued.status === 'ok' || rescued.coverUrl)) return rescued;
     }
   }
-  return fallbackExtract(url, aiConfig);
+  return fallbackExtract(url, ai);
 }
 
 /** Merge LLM-read metadata over heuristic data — the LLM wins for the fields

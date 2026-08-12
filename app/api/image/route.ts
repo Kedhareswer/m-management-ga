@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
-import { browserFetchImage } from '@/lib/playwright';
+import { browserFetchImage, isPlaywrightDisabled } from '@/lib/playwright';
 import { withErrors } from '@/lib/api';
 import { getFetch } from '@/lib/proxy';
 
@@ -92,7 +92,7 @@ async function directFetch(url: string, ref?: string): Promise<Fetched | null> {
 }
 
 async function browserFetch(url: string, ref?: string): Promise<Fetched | null> {
-  if (process.env.DISABLE_PLAYWRIGHT === '1') return null;
+  if (isPlaywrightDisabled()) return null;
   try {
     const { body, type } = await browserFetchImage(url, ref);
     if (body.length === 0 || body.length > MAX_BYTES) return null;

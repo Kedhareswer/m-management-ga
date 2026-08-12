@@ -17,7 +17,7 @@ export const POST = withErrors(async (req: NextRequest, ctx: { params: Promise<{
   const series = await getSeries(id);
   if (!series) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const meta = await extractMeta(series.sourceUrl, aiConfigFromHeaders(req));
+  const meta = await extractMeta(series.sourceUrl, aiConfigFromHeaders(req) ?? undefined);
 
   // On a block/unreachable re-extract, keep whatever we already had — don't
   // overwrite good data with a failed scrape — but record the new status.

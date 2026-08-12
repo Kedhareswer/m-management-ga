@@ -157,7 +157,7 @@ export default function SeriesDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-ink/40 p-3 backdrop-blur-md transition-opacity md:p-6"
+      className="fixed inset-0 z-50 overflow-y-auto modal-scrim p-2 md:p-6"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -166,7 +166,7 @@ export default function SeriesDetailModal({
       <div
         ref={cardRef}
         onClick={(e) => e.stopPropagation()}
-        className="mx-auto my-4 w-full max-w-3xl rounded-panel bg-card p-6 shadow-lift border border-white/70 md:my-8 md:p-8"
+        className="modal-in mx-auto my-2 w-full max-w-3xl rounded-panel bg-card p-4 shadow-lift md:my-8 md:p-7"
       >
         {/* Header bar */}
         <div className="flex items-center justify-between gap-2 border-b border-parchment pb-4">
@@ -210,7 +210,7 @@ export default function SeriesDetailModal({
                 href={`/go/${series.id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-2 rounded-full bg-[#1e1b18] px-7 py-3 text-xs font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:bg-[#2b2723] active:translate-y-0"
+                className="btn-cta px-7 py-3 text-xs"
               >
                 Start reading <ExternalIcon />
               </a>
@@ -218,7 +218,7 @@ export default function SeriesDetailModal({
               <button
                 onClick={() => onPatch(series.id, { favorite: !series.favorite })}
                 className={`grid h-10 w-10 place-items-center rounded-full shadow-soft transition active:scale-90 ${
-                  series.favorite ? 'bg-sun text-white' : 'bg-parchment text-fawn hover:text-sun'
+                  series.favorite ? 'bg-sun text-on-cta' : 'bg-parchment text-fawn hover:text-sun'
                 }`}
                 title={series.favorite ? 'Remove from favourites' : 'Add to favourites'}
                 aria-pressed={series.favorite}

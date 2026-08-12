@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Series } from '@/lib/types';
 import { continueUrl } from '@/lib/chapterUrl';
 import {
-  CloseIcon, ExternalIcon, RefreshIcon, LinkIcon, MinusIcon, PlusIcon, BookmarkIcon, SparkleIcon,
+  CloseIcon, ExternalIcon, RefreshIcon, LinkIcon, MinusIcon, PlusIcon,
 } from './icons';
 
 export default function InAppBrowserModal({
@@ -65,31 +65,32 @@ export default function InAppBrowserModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-ink/70 p-2 backdrop-blur-md md:p-5"
+      className="fixed inset-0 z-50 flex flex-col bg-overlay/70 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="In-App Reader Browser"
+      style={{ padding: '0 env(safe-area-inset-right) 0 env(safe-area-inset-left)' }}
     >
-      <div className="flex h-full w-full flex-col overflow-hidden rounded-panel bg-card shadow-lift border border-white/60">
-        {/* Top Animated Loading Bar */}
-        <div className="h-1 w-full bg-parchment overflow-hidden">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-card md:m-3 md:rounded-panel md:shadow-lift">
+        {/* Top loading bar */}
+        <div className="h-[3px] w-full overflow-hidden bg-parchment dark:bg-shell">
           <div
-            className={`h-full bg-gradient-to-r from-sun via-leaf to-lavdeep transition-all duration-500 ${
-              iframeLoading ? 'w-3/4 animate-pulse' : 'w-full'
+            className={`h-full bg-gradient-to-r from-sun via-leaf to-lavdeep transition-[width] duration-500 ${
+              iframeLoading ? 'w-3/4' : 'w-full'
             }`}
+            style={{ transitionTimingFunction: 'var(--ease-out)' }}
           />
         </div>
 
         {/* Browser Top Navigation Header (Checklist.design specification) */}
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-parchment bg-parchment/90 px-4 py-3 backdrop-blur-sm">
-          {/* Site Identity & Security Lock */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-leaf/20 text-leaf text-xs font-bold" title="SSL Encrypted Connection">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/[0.08] bg-parchment/95 px-3 py-2.5 backdrop-blur-sm">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="grid h-7 w-7 place-items-center rounded-full bg-leaf/15 text-xs font-bold text-leaf" title="SSL encrypted connection">
               🔒
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="truncate text-xs font-extrabold text-ink">
+                <span className="truncate text-xs font-bold text-ink">
                   {series ? series.title : 'In-App Reader'}
                 </span>
                 {series && (
@@ -98,30 +99,29 @@ export default function InAppBrowserModal({
                   </span>
                 )}
               </div>
-              <div className="truncate text-[11px] font-semibold text-fawn">{hostName}</div>
+              <div className="truncate text-[11px] font-medium text-fawn">{hostName}</div>
             </div>
           </div>
 
-          {/* Center Action Toolbar: Chapter controls, Reload, Copy Link, Open External */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {series && onChapterChange && (
-              <div className="flex items-center gap-1 rounded-full bg-card px-2 py-1 shadow-soft mr-2">
+              <div className="mr-1 flex items-center gap-0.5 rounded-full bg-card px-1.5 py-1 shadow-soft">
                 <button
                   onClick={handlePrevChapter}
-                  className="grid h-7 w-7 place-items-center rounded-full bg-parchment text-fawn transition hover:text-tomato active:scale-90"
-                  title="Previous Chapter"
-                  aria-label="Previous Chapter"
+                  className="pressable grid h-7 w-7 place-items-center rounded-full bg-parchment text-fawn hover:text-tomato"
+                  title="Previous chapter"
+                  aria-label="Previous chapter"
                 >
                   <MinusIcon />
                 </button>
-                <span className="px-2 text-xs font-extrabold text-ink">
+                <span className="px-1.5 text-[11px] font-extrabold text-ink">
                   ch. {series.currentChapter}
                 </span>
                 <button
                   onClick={handleNextChapter}
-                  className="grid h-7 w-7 place-items-center rounded-full bg-parchment text-fawn transition hover:text-leaf active:scale-90"
-                  title="Next Chapter"
-                  aria-label="Next Chapter"
+                  className="pressable grid h-7 w-7 place-items-center rounded-full bg-parchment text-fawn hover:text-leaf"
+                  title="Next chapter"
+                  aria-label="Next chapter"
                 >
                   <PlusIcon />
                 </button>
@@ -159,7 +159,7 @@ export default function InAppBrowserModal({
 
             <button
               onClick={onClose}
-              className="flex items-center gap-1.5 rounded-full bg-tomato px-3.5 py-1.5 text-xs font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 active:translate-y-0"
+              className="pressable flex items-center gap-1.5 rounded-full bg-tomato px-3 py-1.5 text-[11px] font-extrabold text-white shadow-soft"
               title="Close reader"
             >
               <CloseIcon /> Done
@@ -168,12 +168,15 @@ export default function InAppBrowserModal({
         </header>
 
         {/* Embedded Webview / Reader Container */}
-        <div className="relative flex-1 bg-white">
+        <div className="relative flex-1 bg-white dark:bg-shell">
           {iframeLoading && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-card/90 gap-3 text-center">
-              <SparkleIcon className="h-8 w-8 animate-spin text-lavdeep" />
-              <p className="text-sm font-extrabold text-ink">Loading {hostName}…</p>
-              <p className="text-xs font-semibold text-fawn">
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-card/90 text-center">
+              <span className="relative flex h-3 w-3">
+                <span className="absolute h-full w-full animate-ping rounded-full bg-lavdeep/60" />
+                <span className="h-3 w-3 rounded-full bg-lavdeep" />
+              </span>
+              <p className="text-sm font-bold text-ink">Loading {hostName}…</p>
+              <p className="text-xs font-medium text-fawn">
                 Preparing chapter view inside MangaShelf
               </p>
             </div>

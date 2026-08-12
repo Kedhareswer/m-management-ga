@@ -1,16 +1,18 @@
 import axios from 'axios';
 
 /**
- * LLM provider layer targeting NVIDIA API (OpenAI-compatible completions).
+ * LLM provider layer — OpenAI-compatible completions.
  *
- * Uses axios for HTTP calls with hardcoded API key fallback to ensure
- * zero-setup AI features out of the box.
+ * Two server-side providers, Requesty preferred (fast router, paid key) with
+ * NVIDIA NIM as fallback. Secrets come only from env or session headers;
+ * the app falls back to rules when no key is configured.
  */
 
 export interface AIConfig {
   apiKey: string;
   model: string;
   baseUrl?: string;
+  provider?: 'requesty' | 'nvidia';
 }
 
 export interface AIMessage {
@@ -18,31 +20,89 @@ export interface AIMessage {
   content: string;
 }
 
-export const HARDCODED_API_KEY =
-  process.env.NVIDIA_API_KEY ||
-  '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';
-export const DEFAULT_INVOKE_URL =
+export const NVIDIA_API_URL =
   process.env.NVIDIA_API_URL ||
   'https://integrate.api.nvidia.com/v1/chat/completions';
+export const REQUESTY_BASE_URL =
+  process.env.REQUESTY_BASE_URL || 'https://router.requesty.ai/v1';
 export const DEFAULT_MODEL =
-  process.env.NVIDIA_MODEL || process.env.AI_MODEL || 'google/gemma-4-31b-it';
+  process.env.AI_MODEL ||
+  process.env.NVIDIA_MODEL ||
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
 
-export function getHardcodedAIConfig(): AIConfig {
+/** Back-compat alias used across the app. */
+export const DEFAULT_INVOKE_URL = NVIDIA_API_URL;
+
+function normalizeBase(url: string): string {
+  return url.endsWith('/chat/completions')
+    ? url
+    : `${url.replace(/\/+$/, '')}/chat/completions`;
+}
+
+/** Detect Requesty keys (rqsty-…) so session overrides hit the right router. */
+export function isRequestyKey(apiKey: string): boolean {
+  return apiKey.trim().toLowerCase().startsWith('rqsty-');
+}
+
+/**
+ * Server-side config: Requesty first (REQUESTY_API_KEY), then NVIDIA
+ * (NVIDIA_API_KEY). Returns null when neither is set.
+ */
+export function getServerAIConfig(): AIConfig | null {
+  const requestyKey = process.env.REQUESTY_API_KEY?.trim();
+  if (requestyKey) {
+    return {
+      apiKey: requestyKey,
+      model: process.env.AI_MODEL?.trim() || DEFAULT_MODEL,
+      baseUrl: normalizeBase(REQUESTY_BASE_URL),
+      provider: 'requesty',
+    };
+  }
+
+  const nvidiaKey = process.env.NVIDIA_API_KEY?.trim();
+  if (!nvidiaKey) return null;
   return {
-    apiKey: process.env.NVIDIA_API_KEY?.trim() || HARDCODED_API_KEY,
+    apiKey: nvidiaKey,
     model: process.env.NVIDIA_MODEL?.trim() || DEFAULT_MODEL,
-    baseUrl: process.env.NVIDIA_API_URL?.trim() || DEFAULT_INVOKE_URL,
+    baseUrl: normalizeBase(NVIDIA_API_URL),
+    provider: 'nvidia',
   };
 }
 
+/** Public status for the UI — never includes secrets. */
+export function getServerAIStatus(): {
+  configured: boolean;
+  provider: 'requesty' | 'nvidia' | null;
+  model: string | null;
+} {
+  const cfg = getServerAIConfig();
+  if (!cfg) return { configured: false, provider: null, model: null };
+  return { configured: true, provider: cfg.provider || null, model: cfg.model };
+}
+
+/**
+ * Session override from request headers, or server env config.
+ * Requesty keys are routed to REQUESTY_BASE_URL automatically.
+ */
+export function resolveAIConfig(
+  apiKey?: string | null,
+  model?: string | null
+): AIConfig | null {
+  const key = apiKey?.trim();
+  if (key) {
+    const requesty = isRequestyKey(key);
+    return {
+      apiKey: key,
+      model: model?.trim() || DEFAULT_MODEL,
+      baseUrl: normalizeBase(requesty ? REQUESTY_BASE_URL : NVIDIA_API_URL),
+      provider: requesty ? 'requesty' : 'nvidia',
+    };
+  }
+  return getServerAIConfig();
+}
+
 export interface ChatCompletion {
-  /** The model's answer, with any inline reasoning tags already stripped out. */
   content: string;
-  /**
-   * Chain-of-thought, when the model/router exposes it — either as a
-   * dedicated `reasoning`/`reasoning_content` field or inline
-   * <think>/<thinking>/<reasoning> tags inside content.
-   */
   reasoning?: string;
 }
 
@@ -51,51 +111,48 @@ const THINK_TAG_RE = /<(think|thinking|reasoning)>([\s\S]*?)<\/\1>/gi;
 export async function chatComplete(
   cfg: AIConfig,
   messages: AIMessage[],
-  opts: { maxTokens?: number; temperature?: number } = {}
+  opts: { maxTokens?: number; temperature?: number; enableThinking?: boolean } = {}
 ): Promise<ChatCompletion> {
-  const apiKey = cfg.apiKey?.trim() || HARDCODED_API_KEY;
+  const apiKey = cfg.apiKey?.trim();
+  if (!apiKey) throw new Error('No AI API key is configured');
+
   const model = cfg.model?.trim() || DEFAULT_MODEL;
+  const invokeUrl = cfg.baseUrl?.trim() ? normalizeBase(cfg.baseUrl) : NVIDIA_API_URL;
 
-  let invokeUrl = DEFAULT_INVOKE_URL;
-  if (
-    cfg.baseUrl &&
-    !cfg.baseUrl.includes('router.requesty.ai') &&
-    cfg.baseUrl !== DEFAULT_INVOKE_URL
-  ) {
-    invokeUrl = cfg.baseUrl.endsWith('/chat/completions')
-      ? cfg.baseUrl
-      : `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
-  }
-
-  const stream = false;
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
-    Accept: stream ? 'text/event-stream' : 'application/json',
+    Accept: 'application/json',
   };
 
-  const payload = {
+  // Reasoning models (nemotron-*-reasoning) think by default and burn the
+  // whole token budget on it — thinking stays off unless explicitly asked.
+  const enableThinking = opts.enableThinking ?? false;
+
+  const payload: Record<string, unknown> = {
     messages,
     model,
-    chat_template_kwargs: { enable_thinking: true },
-    max_tokens: opts.maxTokens ?? 4096,
-    stream,
-    temperature: opts.temperature ?? 1,
+    max_tokens: opts.maxTokens ?? 768,
+    stream: false,
+    temperature: opts.temperature ?? 0.6,
     top_p: 0.95,
   };
+  if (enableThinking) {
+    payload.chat_template_kwargs = { enable_thinking: true };
+  }
 
   try {
     const response = await axios.post(invokeUrl, payload, {
       headers,
-      responseType: stream ? 'stream' : 'json',
-      timeout: 60_000,
+      responseType: 'json',
+      timeout: 45_000,
     });
 
     const data = response.data;
     const message = data?.choices?.[0]?.message;
     let content = message?.content;
     if (typeof content !== 'string') {
-      throw new Error('NVIDIA AI provider returned no message content');
+      throw new Error('AI provider returned no message content');
     }
 
     const fieldReasoning: string | undefined = message?.reasoning || message?.reasoning_content;
@@ -119,9 +176,8 @@ export async function chatComplete(
         typeof error.response.data === 'string'
           ? error.response.data
           : JSON.stringify(error.response.data);
-      throw new Error(`NVIDIA API HTTP ${error.response.status}: ${errDetail.slice(0, 300)}`);
+      throw new Error(`AI API HTTP ${error.response.status}: ${errDetail.slice(0, 300)}`);
     }
     throw error;
   }
 }
-

@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { listSeries, updateSeries } from '@/lib/store';
 import { answer } from '@/lib/bot';
 import { llmAnswer } from '@/lib/agent';
-import { DEFAULT_MODEL, getHardcodedAIConfig, type AIConfig } from '@/lib/ai';
+import { getServerAIStatus, resolveAIConfig, type AIConfig } from '@/lib/ai';
 import { appendMessages, clearMemory, compactIfNeeded, loadMemory } from '@/lib/memory';
 import { withErrors } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
-/** GET /api/chat — the persisted conversation, so the panel restores on reload. */
+/** GET /api/chat — conversation + whether server AI is configured (no secrets). */
 export const GET = withErrors(async () => {
   const mem = await loadMemory();
-  return NextResponse.json({ summary: mem.summary, messages: mem.messages });
+  return NextResponse.json({
+    summary: mem.summary,
+    messages: mem.messages,
+    ai: getServerAIStatus(),
+  });
 });
 
 /** DELETE /api/chat — wipe Mango's memory (transcript + compacted notes). */
@@ -24,9 +28,9 @@ export const DELETE = withErrors(async () => {
  * POST /api/chat { message }
  *
  * Provider selection per request:
- * - Uses NVIDIA AI completions (default model google/gemma-4-31b-it)
- *   with session-key override or default hardcoded credentials.
- * - Always falls back gracefully to rule-based logic if a transient network error occurs.
+ * - Session override via x-ai-key / x-ai-model (Requesty keys → Requesty router)
+ * - Else server REQUESTY_API_KEY, else NVIDIA_API_KEY
+ * - Falls back to rule-based logic on errors / missing keys
  */
 export const POST = withErrors(async (req: NextRequest) => {
   let body: { message?: string };
@@ -40,23 +44,30 @@ export const POST = withErrors(async (req: NextRequest) => {
     return NextResponse.json({ error: 'Say something!' }, { status: 400 });
   }
 
-  const apiKey = req.headers.get('x-ai-key')?.trim() || '';
-  const model = req.headers.get('x-ai-model')?.trim() || DEFAULT_MODEL;
-  const ai: AIConfig = apiKey ? { apiKey, model } : getHardcodedAIConfig();
+  const ai: AIConfig | null = resolveAIConfig(
+    req.headers.get('x-ai-key'),
+    req.headers.get('x-ai-model')
+  );
   const safeMode = req.headers.get('x-safe-mode') !== '0';
 
   const [library, memory] = await Promise.all([listSeries(), loadMemory()]);
 
   let reply;
-  let provider: 'nvidia' | 'rules' = 'rules';
+  let provider: 'requesty' | 'nvidia' | 'rules' = 'rules';
 
   try {
-    reply = await llmAnswer(ai, message, library, memory.summary, memory.messages, { safeMode });
-    provider = 'nvidia';
+    if (ai) {
+      reply = await llmAnswer(ai, message, library, memory.summary, memory.messages, { safeMode });
+      provider = ai.provider || 'requesty';
+    } else {
+      const { reply: fallback, update } = await answer(message, library, undefined, { safeMode });
+      if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
+      reply = fallback;
+    }
   } catch (err) {
     // Surface the failure, then still answer with the built-in brain.
     const detail = err instanceof Error ? err.message : 'unknown error';
-    const { reply: fallback, update } = await answer(message, library, ai, { safeMode });
+    const { reply: fallback, update } = await answer(message, library, ai || undefined, { safeMode });
     if (update) await updateSeries(update.id, { currentChapter: update.currentChapter });
     reply = {
       ...fallback,
@@ -78,7 +89,7 @@ export const POST = withErrors(async (req: NextRequest) => {
     { from: 'user', text: message },
     { from: 'bot', text: memoryText },
   ]);
-  await compactIfNeeded(ai);
+  await compactIfNeeded(ai || undefined);
 
   return NextResponse.json({ ...reply, provider });
 });

@@ -69,13 +69,12 @@ export default function BookCover({
         )}
         {/* spine highlight */}
         <div className="pointer-events-none absolute inset-y-0 left-0 w-[7px] bg-gradient-to-r from-black/25 to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 left-[7px] w-px bg-white/25" />
+        <div className="pointer-events-none absolute inset-y-0 left-[7px] w-px bg-white/20" />
       </div>
 
       {/* bookmark ribbon */}
       <div
-        className="absolute -bottom-3 right-3 h-9 w-5 origin-top"
-        style={{ animation: 'ribbon-sway 4s ease-in-out infinite' }}
+        className="absolute -bottom-3 right-3 h-9 w-5 origin-top motion-safe:animate-ribbon"
         aria-hidden
       >
         <div

@@ -40,33 +40,30 @@ export default function StatsBanner({ library }: { library: Series[] }) {
   ];
 
   return (
-    <section data-intro="banner" className="mt-8 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-      <div className="flex items-center gap-6 rounded-panel bg-peach/70 p-5 shadow-soft md:p-7">
+    <section data-intro="banner" className="mt-8 grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+      <div className="flex items-center gap-5 rounded-panel border border-ink/[0.08] bg-peach/55 p-5 shadow-soft md:p-6 dark:bg-peach/25">
         <BookPile />
-        <div>
-          <h2 className="text-[19px] font-extrabold leading-snug md:text-[22px]">
+        <div className="min-w-0">
+          <h2 className="font-display text-[20px] font-extrabold leading-snug tracking-tight md:text-[24px]">
             {chapters.toLocaleString()} chapters read
             <br /> across {library.length} series
           </h2>
-          <p className="mt-1.5 max-w-[280px] text-[12.5px] font-semibold leading-relaxed text-fawn">
+          <p className="mt-1.5 max-w-[300px] text-[12.5px] font-medium leading-relaxed text-fawn">
             Your bookmarks live here — wherever you wander off to read, MangaShelf remembers the exact chapter.
           </p>
-          <button className="mt-4 flex items-center gap-2 rounded-full bg-tomato px-5 py-2.5 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift">
-            <EyeGlyph /> view all
-          </button>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2.5">
         {highlights.map((h) => (
           <button
             key={h.title}
-            className="flex items-center gap-4 rounded-blob bg-card px-4 py-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+            className="pressable flex items-center gap-3 rounded-blob border border-ink/[0.07] bg-card px-4 py-3 text-left shadow-soft hover:shadow-lift"
           >
             <Doodle kind={h.doodle} />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-extrabold">{h.title}</div>
-              <div className="truncate text-[11px] font-semibold text-fawn">{h.body}</div>
+              <div className="truncate text-[13px] font-bold tracking-tight">{h.title}</div>
+              <div className="truncate text-[11px] font-medium text-fawn">{h.body}</div>
             </div>
             <ChevronIcon className="shrink-0 text-fawn" />
           </button>

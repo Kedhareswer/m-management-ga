@@ -7,7 +7,13 @@ import { playwrightProxy } from './proxy';
  * Playwright runs inside the Next.js server itself — no separate service.
  * One headless Chromium is shared across requests (stored on globalThis so
  * dev-mode hot reloads don't leak browsers).
+ *
+ * Vercel serverless has no Chromium binary — skip Playwright there (and
+ * whenever DISABLE_PLAYWRIGHT=1) so extract/image fall back to fetch/TinyFish.
  */
+export function isPlaywrightDisabled(): boolean {
+  return process.env.DISABLE_PLAYWRIGHT === '1' || process.env.VERCEL === '1';
+}
 
 const NAV_TIMEOUT = 10_000;
 

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
-import Lenis from 'lenis';
 import type { Series } from '@/lib/types';
 import { fetchJson } from '@/lib/fetchJson';
 import Sidebar, { type NavFilter } from './Sidebar';
@@ -32,7 +31,7 @@ function aiHeaders(): Record<string, string> {
   if (typeof window === 'undefined') return {};
   const key = sessionStorage.getItem('requesty-key')?.trim();
   if (!key) return {};
-  return { 'x-ai-key': key, 'x-ai-model': sessionStorage.getItem('requesty-model') || 'google/gemma-4-31b-it' };
+  return { 'x-ai-key': key, 'x-ai-model': sessionStorage.getItem('requesty-model') || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning' };
 }
 
 const NAV_LABEL: Record<NavFilter, string> = {
@@ -106,31 +105,11 @@ export default function Dashboard() {
     refresh();
   }, [refresh]);
 
-  // Lenis smooth scrolling on the main column.
-  useEffect(() => {
-    const host = scrollHostRef.current;
-    if (!host) return;
-    const lenis = new Lenis({
-      wrapper: host,
-      duration: 1.15,
-      easing: (t) => 1 - Math.pow(1 - t, 3),
-    });
-    let raf = 0;
-    const loop = (time: number) => {
-      lenis.raf(time);
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      cancelAnimationFrame(raf);
-      lenis.destroy();
-    };
-  }, []);
-
   // Entrance choreography, once the library has loaded (or failed to).
   useEffect(() => {
     if ((!library && !loadError) || introPlayed.current || !rootRef.current) return;
     introPlayed.current = true;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const root = rootRef.current;
     const ctx = gsap.context(() => {
       // Only animate targets that exist — empty/error states have no cards
@@ -148,17 +127,17 @@ export default function Dashboard() {
         gsap.set(els, { opacity: 0 });
         tl.fromTo(els, from, to, pos);
       };
-      step('[data-intro="sidebar"]', { x: -30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 });
-      step('[data-intro="addbar"]', { y: -24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, '-=0.3');
-      step('[data-intro="chips"]', { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45 }, '-=0.25');
+      step('[data-intro="sidebar"]', { x: -16, opacity: 0 }, { x: 0, opacity: 1, duration: 0.28 });
+      step('[data-intro="addbar"]', { y: -12, opacity: 0 }, { y: 0, opacity: 1, duration: 0.28 }, '-=0.18');
+      step('[data-intro="chips"]', { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.24 }, '-=0.14');
+      step('[data-intro="banner"]', { y: 14, opacity: 0, scale: 0.985 }, { y: 0, opacity: 1, scale: 1, duration: 0.32 }, '-=0.1');
       step(
         '[data-shelf-card]',
-        { y: 36, opacity: 0, rotate: -2 },
-        { y: 0, opacity: 1, rotate: 0, duration: 0.55, stagger: 0.08, ease: 'back.out(1.4)' },
-        '-=0.2'
+        { y: 14, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.26, stagger: 0.04 },
+        '-=0.16'
       );
-      step('[data-intro="banner"]', { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5 }, '-=0.3');
-      step('[data-intro="chat"]', { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.5 }, '-=0.4');
+      step('[data-intro="chat"]', { x: 12, opacity: 0 }, { x: 0, opacity: 1, duration: 0.24 }, '-=0.14');
     }, rootRef);
     return () => ctx.revert();
   }, [library, loadError]);
@@ -228,8 +207,8 @@ export default function Dashboard() {
         if (first) {
           gsap.fromTo(
             first,
-            { scale: 0.8, opacity: 0, rotate: -4 },
-            { scale: 1, opacity: 1, rotate: 0, duration: 0.6, ease: 'back.out(1.8)' }
+            { scale: 0.95, opacity: 0, y: 8 },
+            { scale: 1, opacity: 1, y: 0, duration: 0.28, ease: 'power3.out' }
           );
         }
       });
@@ -284,7 +263,7 @@ export default function Dashboard() {
     async (id: string) => {
       const card = shelfRef.current?.querySelector<HTMLElement>(`[data-card-id="${id}"]`);
       if (card) {
-        await gsap.to(card, { scale: 0.7, opacity: 0, rotate: 6, duration: 0.3, ease: 'power2.in' }).then();
+        await gsap.to(card, { scale: 0.96, opacity: 0, y: 6, duration: 0.2, ease: 'power3.out' }).then();
       }
       await fetch(`/api/manga/${id}`, { method: 'DELETE' });
       await refresh();
@@ -299,8 +278,18 @@ export default function Dashboard() {
     <>
       <SplashScreen loading={library === null && !loadError} />
 
-      <div ref={rootRef} className="flex h-screen w-full gap-2 overflow-hidden bg-shell p-2 [height:100dvh] md:p-3">
-        <div className="flex min-w-0 flex-1 gap-2 overflow-hidden rounded-panel bg-parchment p-3 shadow-lift md:p-6">
+      <div
+        ref={rootRef}
+        className="relative flex h-screen w-full gap-3 overflow-hidden bg-shell p-2 [height:100dvh] md:p-3"
+        style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+      >
+        {/* Ambient aurora — slow drifting color fields behind the panels */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+          <div className="animate-aurora absolute -left-[15%] -top-[20%] h-[55vmax] w-[55vmax] rounded-full bg-lavdeep/[0.07] blur-3xl dark:bg-lavdeep/[0.16]" />
+          <div className="animate-aurora absolute -bottom-[25%] -right-[10%] h-[50vmax] w-[50vmax] rounded-full bg-sky/[0.06] blur-3xl [animation-delay:-9s] dark:bg-sky/[0.12]" />
+          <div className="animate-aurora absolute left-[35%] top-[30%] h-[35vmax] w-[35vmax] rounded-full bg-sun/[0.05] blur-3xl [animation-delay:-4s] dark:bg-sun/[0.07]" />
+        </div>
+        <div className="relative flex min-w-0 flex-1 gap-3 overflow-hidden rounded-panel border border-ink/[0.08] bg-parchment/95 p-3 shadow-lift backdrop-blur-xl md:p-5 dark:bg-parchment/90">
           <Sidebar
             active={navFilter}
             onPick={setNavFilter}
@@ -311,9 +300,9 @@ export default function Dashboard() {
           {/* main scrolling column */}
           <main
             ref={scrollHostRef}
-            className="h-full min-w-0 flex-1 overflow-y-auto overscroll-contain rounded-panel px-1 pb-24 md:px-4 md:pb-0"
+            className="h-full min-w-0 flex-1 scroll-smooth overflow-y-auto overscroll-contain rounded-panel px-2 pb-28 md:px-5 md:pb-0"
           >
-            <div className="sticky top-0 z-10 -mx-1 bg-parchment/95 px-1 pb-4 pt-2 backdrop-blur-sm md:-mx-4 md:px-4">
+            <div className="sticky top-0 z-10 -mx-2 bg-parchment/90 px-2 pb-4 pt-1 backdrop-blur-md md:-mx-5 md:px-5">
               <AddBar
                 query={query}
                 onQuery={setQuery}
@@ -333,14 +322,14 @@ export default function Dashboard() {
                     setAddOpen(true);
                     setQuery('');
                   }}
-                  className="mt-3 flex w-full items-center gap-2 rounded-full bg-lav/50 px-4 py-2 text-left text-[12.5px] font-bold text-ink transition hover:bg-lav/70"
+                  className="pressable mt-3 flex w-full items-center gap-2 rounded-xl border border-lavdeep/20 bg-lav/60 px-4 py-2.5 text-left text-[12.5px] font-semibold text-ink hover:bg-lav/80"
                 >
                   <LinkIcon className="shrink-0 text-lavdeep" />
                   That looks like a link — add it to your shelf instead of searching for it?
                 </button>
               )}
 
-              <div className="mt-5">
+              <div className="mt-4">
                 <GenreChips genres={genres} active={genre} onPick={setGenre} />
               </div>
             </div>
@@ -354,17 +343,19 @@ export default function Dashboard() {
               />
             )}
 
-            <section className="mt-2">
-              <div className="flex items-center justify-between">
-                <h2 className="text-[19px] font-extrabold">
+            <section className="mt-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-[20px] font-extrabold leading-tight tracking-tight">
                   {headerLabel}
-                  <span className="ml-2 text-[13px] font-bold text-fawn">{visible.length}</span>
+                  <span className="ml-2 rounded-full bg-card px-2.5 py-0.5 text-[12px] font-bold text-fawn shadow-soft">
+                    {visible.length}
+                  </span>
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={toggleSafeMode}
-                    className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-extrabold shadow-soft transition hover:-translate-y-0.5 ${
-                      safeMode ? 'bg-leaf/20 text-leaf' : 'bg-tomato/15 text-tomato'
+                    className={`pressable flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-extrabold shadow-soft ${
+                      safeMode ? 'bg-leaf/15 text-leaf' : 'bg-tomato/12 text-tomato'
                     }`}
                     title={
                       safeMode
@@ -376,38 +367,38 @@ export default function Dashboard() {
                     {safeMode ? <ShieldIcon /> : <EyeOffIcon />}
                     {safeMode ? 'Safe' : '18+'}
                     {safeMode && hiddenNsfw > 0 && (
-                      <span className="rounded-full bg-leaf/30 px-1.5 text-[10px]">{hiddenNsfw}</span>
+                      <span className="rounded-full bg-leaf/25 px-1.5 text-[10px]">{hiddenNsfw}</span>
                     )}
                   </button>
                   <div className="flex items-center rounded-full bg-card p-1 shadow-soft">
                     <button
                       onClick={() => setViewMode('shelf')}
-                      className={`rounded-full px-3 py-1 text-[11.5px] font-extrabold transition ${
-                        viewMode === 'shelf' ? 'bg-lavdeep text-white shadow-soft' : 'text-fawn hover:text-ink'
+                      className={`pressable rounded-full px-3 py-1.5 text-[11.5px] font-extrabold ${
+                        viewMode === 'shelf' ? 'bg-cta text-on-cta shadow-soft' : 'text-fawn hover:text-ink'
                       }`}
-                      title="Shelf View (Horizontal Carousel)"
+                      title="Shelf view (horizontal carousel)"
                     >
                       Shelf
                     </button>
                     <button
                       onClick={() => setViewMode('grid')}
-                      className={`rounded-full px-3 py-1 text-[11.5px] font-extrabold transition ${
-                        viewMode === 'grid' ? 'bg-lavdeep text-white shadow-soft' : 'text-fawn hover:text-ink'
+                      className={`pressable rounded-full px-3 py-1.5 text-[11.5px] font-extrabold ${
+                        viewMode === 'grid' ? 'bg-cta text-on-cta shadow-soft' : 'text-fawn hover:text-ink'
                       }`}
-                      title="Grid View (Gallery Layout)"
+                      title="Grid view (gallery layout)"
                     >
                       Grid
                     </button>
                   </div>
-                  <button className="hidden rounded-full bg-card px-4 py-1.5 text-[12px] font-bold text-fawn shadow-soft transition hover:text-ink sm:block" onClick={clearFilters}>
-                    View All
+                  <button className="pressable hidden rounded-full bg-card px-4 py-1.5 text-[12px] font-bold text-fawn shadow-soft hover:text-ink sm:block" onClick={clearFilters}>
+                    View all
                   </button>
                   {viewMode === 'shelf' && (
                     <>
-                      <button className="icon-btn !h-8 !w-8 rotate-180" aria-label="Scroll shelf left" onClick={() => shelfRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}>
+                      <button className="icon-btn !h-9 !w-9 rotate-180" aria-label="Scroll shelf left" onClick={() => shelfRef.current?.scrollBy({ left: -420, behavior: 'smooth' })}>
                         <ChevronIcon />
                       </button>
-                      <button className="icon-btn !h-8 !w-8" aria-label="Scroll shelf right" onClick={() => shelfRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}>
+                      <button className="icon-btn !h-9 !w-9" aria-label="Scroll shelf right" onClick={() => shelfRef.current?.scrollBy({ left: 420, behavior: 'smooth' })}>
                         <ChevronIcon />
                       </button>
                     </>
@@ -452,7 +443,6 @@ export default function Dashboard() {
               ) : (
                 <div
                   ref={shelfRef}
-                  data-lenis-prevent
                   className={
                     viewMode === 'shelf'
                       ? 'mt-4 flex gap-4 overflow-x-auto pb-6 pt-2'
@@ -461,38 +451,43 @@ export default function Dashboard() {
                 >
                   {library === null && !loadError ? (
                     [...Array(4)].map((_, i) => (
-                      <div key={i} className="h-[380px] w-[196px] shrink-0 animate-pulse rounded-blob bg-card/70" />
+                      <div
+                        key={i}
+                        className="h-[360px] w-[190px] shrink-0 rounded-blob border border-ink/[0.07] bg-card/80 shadow-soft"
+                      >
+                        <div className="animate-shimmer h-full w-full rounded-blob opacity-60" />
+                      </div>
                     ))
                   ) : loadError ? (
-                    <div className="col-span-full flex h-[300px] w-full flex-col items-center justify-center gap-3 text-center">
-                      <span className="text-4xl">⚠️</span>
-                      <p className="text-[14px] font-bold text-fawn">
+                    <div className="col-span-full flex h-[320px] w-full flex-col items-center justify-center gap-3 rounded-blob border border-dashed border-tomato/25 bg-card/70 text-center">
+                      <span className="text-3xl">⚠️</span>
+                      <p className="max-w-sm text-[13px] font-semibold text-fawn">
                         Couldn&apos;t load your shelf — {loadError}
                       </p>
                       <button
                         onClick={refresh}
-                        className="flex items-center gap-2 rounded-full bg-tomato px-5 py-2 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                        className="pressable flex items-center gap-2 rounded-full bg-tomato px-5 py-2 text-[13px] font-extrabold text-white shadow-soft hover:shadow-lift"
                       >
-                        <RefreshIcon /> try again
+                        <RefreshIcon /> Try again
                       </button>
                     </div>
                   ) : !library || library.length === 0 ? (
-                    <div className="col-span-full flex h-[300px] w-full flex-col items-center justify-center gap-2 text-center">
-                      <span className="text-4xl">🏜️</span>
-                      <p className="text-[14px] font-bold text-fawn">
-                        Nothing here yet — tap <strong>+ add</strong> above
-                        <br /> and paste a link, I&apos;ll shelve it with all its details.
+                    <div className="col-span-full flex h-[320px] w-full flex-col items-center justify-center gap-2 rounded-blob border border-dashed border-ink/[0.07] bg-card/60 text-center">
+                      <span className="text-3xl">🏜️</span>
+                      <p className="max-w-sm text-[13px] font-semibold text-fawn">
+                        Nothing here yet — tap <strong className="text-ink">Add</strong> above
+                        <br /> and paste a link, I&apos;ll shelve it with its details.
                       </p>
                     </div>
                   ) : visible.length === 0 ? (
-                    <div className="col-span-full flex h-[300px] w-full flex-col items-center justify-center gap-3 text-center">
-                      <span className="text-4xl">🔍</span>
-                      <p className="text-[14px] font-bold text-fawn">
+                    <div className="col-span-full flex h-[320px] w-full flex-col items-center justify-center gap-3 rounded-blob border border-dashed border-ink/[0.07] bg-card/60 text-center">
+                      <span className="text-3xl">🔍</span>
+                      <p className="text-[13px] font-semibold text-fawn">
                         Nothing matches this filter.
                       </p>
                       <button
                         onClick={clearFilters}
-                        className="rounded-full bg-card px-5 py-2 text-[13px] font-extrabold text-ink shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                        className="pressable rounded-full bg-card px-5 py-2 text-[13px] font-extrabold text-ink shadow-soft hover:shadow-lift"
                       >
                         Clear filters
                       </button>
@@ -517,8 +512,8 @@ export default function Dashboard() {
 
             {library && library.length > 0 && <StatsBanner library={library} />}
 
-            <footer className="py-8 text-center text-[11px] font-bold text-fawn/70">
-              MangaShelf · your chapters, remembered 🔖
+            <footer className="py-8 text-center text-[11px] font-semibold text-fawn/60">
+              MangaShelf · your chapters, remembered
             </footer>
           </main>
 
@@ -559,7 +554,10 @@ export default function Dashboard() {
         />
 
         {toast && (
-          <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-5 py-2.5 text-[13px] font-bold text-parchment shadow-lift md:bottom-6">
+          <div
+            className="ui-toast fixed left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-cta px-5 py-2.5 text-[13px] font-bold text-on-cta shadow-lift md:bottom-6"
+            style={{ bottom: 'max(5.5rem, calc(env(safe-area-inset-bottom) + 5rem))' }}
+          >
             {toast}
           </div>
         )}

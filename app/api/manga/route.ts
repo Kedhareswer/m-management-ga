@@ -32,7 +32,7 @@ export const POST = withErrors(async (req: NextRequest) => {
   }
 
   const existing = await listSeries();
-  const meta = await extractMeta(url, aiConfigFromHeaders(req));
+  const meta = await extractMeta(url, aiConfigFromHeaders(req) ?? undefined);
 
   const dupe = existing.find(
     (s) => s.title.toLowerCase() === meta.title.toLowerCase() && s.site === meta.site

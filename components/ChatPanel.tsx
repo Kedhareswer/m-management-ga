@@ -24,13 +24,20 @@ interface Message {
 
 let nextId = 1;
 
-const DEFAULT_MODEL = 'google/gemma-4-31b-it';
+const DEFAULT_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
+const LEGACY_MODELS = new Set(['google/gemma-4-31b-it', 'google/gemma-3-27b-it']);
+
+type ServerAIStatus = {
+  configured: boolean;
+  provider: 'requesty' | 'nvidia' | null;
+  model: string | null;
+};
 
 const OPENERS: Omit<Message, 'id'>[] = [
-  { from: 'bot', text: 'Good day! 🍊' },
+  { from: 'bot', text: 'Good day.' },
   {
     from: 'bot',
-    text: "I'm Mango, your shelf keeper. Ask me “what am I reading?” or tell me “update One Piece to chapter 1100” and I'll move your bookmark. Add a Requesty key in ⚙ settings and I get a real brain!",
+    text: "I'm Mango, your shelf keeper. Ask me “what am I reading?” or tell me “update One Piece to chapter 1100” and I'll move your bookmark.",
   },
 ];
 
@@ -51,6 +58,7 @@ export default function ChatPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aiKey, setAiKey] = useState('');
   const [aiModel, setAiModel] = useState(DEFAULT_MODEL);
+  const [serverAI, setServerAI] = useState<ServerAIStatus | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -69,27 +77,36 @@ export default function ChatPanel({
     }
   };
 
-  // Session-based key: lives in sessionStorage only, pasted once per session.
+  // Session-based override key: lives in sessionStorage only.
   useEffect(() => {
-    setAiKey(sessionStorage.getItem('requesty-key') || '');
-    setAiModel(sessionStorage.getItem('requesty-model') || DEFAULT_MODEL);
+    const storedKey = sessionStorage.getItem('requesty-key') || '';
+    let storedModel = sessionStorage.getItem('requesty-model') || DEFAULT_MODEL;
+    // Migrate stale Gemma defaults left in older sessions.
+    if (!storedKey && LEGACY_MODELS.has(storedModel)) {
+      storedModel = DEFAULT_MODEL;
+      sessionStorage.setItem('requesty-model', storedModel);
+    }
+    setAiKey(storedKey);
+    setAiModel(storedModel);
   }, []);
 
   const saveSettings = useCallback((key: string, model: string) => {
+    const nextModel = model.trim() || DEFAULT_MODEL;
     sessionStorage.setItem('requesty-key', key.trim());
-    sessionStorage.setItem('requesty-model', model.trim() || DEFAULT_MODEL);
+    sessionStorage.setItem('requesty-model', nextModel);
     setAiKey(key.trim());
-    setAiModel(model.trim() || DEFAULT_MODEL);
+    setAiModel(nextModel);
     setSettingsOpen(false);
   }, []);
 
-  // Restore the persisted conversation (Mango's memory) on mount.
+  // Restore the persisted conversation + server AI status on mount.
   useEffect(() => {
     (async () => {
-      const res = await fetchJson<{ messages?: { from: 'user' | 'bot'; text: string }[] }>(
-        '/api/chat',
-        { cache: 'no-store' }
-      );
+      const res = await fetchJson<{
+        messages?: { from: 'user' | 'bot'; text: string }[];
+        ai?: ServerAIStatus;
+      }>('/api/chat', { cache: 'no-store' });
+      if (res.data?.ai) setServerAI(res.data.ai);
       const restored: Message[] = (res.data?.messages || []).map((m) => ({
         id: nextId++,
         from: m.from,
@@ -99,7 +116,7 @@ export default function ChatPanel({
     })();
   }, []);
 
-  // Animate each new bubble in with a soft pop.
+  // Animate each new bubble in with a soft, fast fade — no bounce.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -107,8 +124,8 @@ export default function ChatPanel({
     if (last) {
       gsap.fromTo(
         last,
-        { y: 14, scale: 0.92, opacity: 0 },
-        { y: 0, scale: 1, opacity: 1, duration: 0.45, ease: 'back.out(2)' }
+        { y: 6, scale: 0.97, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.18, ease: 'power3.out' }
       );
     }
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
@@ -122,6 +139,8 @@ export default function ChatPanel({
     setThinking(true);
     try {
       const headers: Record<string, string> = { 'content-type': 'application/json' };
+      // Only send session override when the user pasted a temporary key.
+      // Otherwise the server uses REQUESTY_API_KEY / NVIDIA_API_KEY from env.
       if (aiKey) {
         headers['x-ai-key'] = aiKey;
         headers['x-ai-model'] = aiModel;
@@ -169,10 +188,10 @@ export default function ChatPanel({
   };
 
   const PROMPT_CHIPS = [
-    { label: '📖 What am I reading?', text: 'what am I reading?' },
-    { label: '🎲 Recommend fantasy', text: 'recommend fantasy' },
-    { label: '📊 Reading stats', text: 'stats' },
-    { label: '❓ Help', text: 'help' },
+    { label: 'What am I reading?', text: 'what am I reading?' },
+    { label: 'Recommend fantasy', text: 'recommend fantasy' },
+    { label: 'Reading stats', text: 'stats' },
+    { label: 'Help', text: 'help' },
   ];
 
   const nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -180,20 +199,24 @@ export default function ChatPanel({
   return (
     <aside
       data-intro="chat"
-      className="relative fixed inset-0 z-40 flex w-full flex-col bg-[#efe6d5] p-4 pb-5 lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:rounded-panel lg:p-5 lg:shadow-inner1"
+      className="relative fixed inset-0 z-40 flex w-full flex-col bg-parchment p-4 pb-5 lg:static lg:z-auto lg:w-[320px] lg:shrink-0 lg:rounded-panel lg:border lg:border-ink/[0.1] lg:bg-card/80 lg:p-4 lg:shadow-soft lg:backdrop-blur-md"
     >
-      <header className="flex items-center justify-between border-b border-parchment/60 pb-3">
+      <header className="flex items-center justify-between border-b border-ink/[0.08] pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xl" role="img" aria-label="Mango avatar">🍊</span>
-            <h2 className="text-[17px] font-extrabold text-ink">Mango</h2>
-            <span className="h-2 w-2 rounded-full bg-leaf animate-pulse" title="Online" />
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-card shadow-soft text-base" role="img" aria-label="Mango avatar">🍊</span>
+            <h2 className="text-[16px] font-extrabold tracking-tight text-ink">Mango</h2>
+            <span className="h-2 w-2 rounded-full bg-leaf" title="Online" />
           </div>
-          <p className="mt-0.5 text-[10.5px] font-bold text-fawn">
-            🧠 NVIDIA Gemma-4-31B Assistant
+          <p className="mt-0.5 text-[10px] font-semibold text-fawn">
+            {aiKey
+              ? 'Session override key'
+              : serverAI?.configured
+                ? `${serverAI.provider === 'requesty' ? 'Requesty' : 'NVIDIA'} · ${shortModel(serverAI.model || DEFAULT_MODEL)}`
+                : 'Rules brain (no AI key)'}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setSettingsOpen((v) => !v)}
             className={`icon-btn !h-8 !w-8 ${settingsOpen ? '!text-lavdeep ring-2 ring-lavdeep/25' : ''}`}
@@ -215,19 +238,19 @@ export default function ChatPanel({
         <SettingsCard
           initialKey={aiKey}
           initialModel={aiModel}
+          serverAI={serverAI}
           onSave={saveSettings}
           onCancel={() => setSettingsOpen(false)}
         />
       )}
 
-      {/* Quick Prompts Bar */}
       <div className="mt-3 flex flex-wrap gap-1.5">
         {PROMPT_CHIPS.map((chip, idx) => (
           <button
             key={idx}
             onClick={() => send(chip.text)}
             disabled={thinking}
-            className="rounded-full bg-card px-2.5 py-1 text-[10.5px] font-extrabold text-ink/80 shadow-soft transition hover:-translate-y-0.5 hover:bg-lav/40 hover:text-ink disabled:opacity-50"
+            className="pressable rounded-full bg-card px-2.5 py-1 text-[10.5px] font-semibold text-ink/80 shadow-soft hover:text-ink disabled:opacity-50"
           >
             {chip.label}
           </button>
@@ -237,7 +260,6 @@ export default function ChatPanel({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        data-lenis-prevent
         className="mt-4 flex flex-1 flex-col gap-3 overflow-y-auto pr-1"
       >
         {messages.map((m) => (
@@ -266,7 +288,7 @@ export default function ChatPanel({
                     <button
                       key={s.id}
                       onClick={() => onOpenReaderUrl?.(`/go/${s.id}`, s)}
-                      className="w-[72px] shrink-0 text-left transition hover:-translate-y-1"
+                      className="pressable w-[72px] shrink-0 text-left motion-safe:hover:-translate-y-0.5"
                       title={`${s.title} — continue at ch. ${s.currentChapter}`}
                     >
                       <BookCover series={s} className="h-[92px] w-full" />
@@ -281,7 +303,7 @@ export default function ChatPanel({
               {m.link && (
                 <button
                   onClick={() => onOpenReaderUrl?.(m.link!.href)}
-                  className="mt-2 inline-block rounded-full bg-lavdeep px-3.5 py-1.5 text-[11px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5"
+                  className="pressable mt-2 inline-block rounded-full bg-lavdeep px-3.5 py-1.5 text-[11px] font-extrabold text-white shadow-soft"
                 >
                   {m.link.label} →
                 </button>
@@ -307,7 +329,7 @@ export default function ChatPanel({
                     <button
                       key={i}
                       onClick={() => onOpenReaderUrl?.(l.href)}
-                      className="block text-left rounded-blob bg-card px-3 py-2 shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                      className="pressable block w-full rounded-xl border border-ink/[0.07] bg-card px-3 py-2 text-left shadow-soft hover:shadow-lift"
                     >
                       <div className="truncate text-[11.5px] font-extrabold text-lavdeep">{l.label}</div>
                       {l.snippet && (
@@ -342,19 +364,19 @@ export default function ChatPanel({
       </div>
 
       <div className="mt-4 flex items-center gap-2">
-        <div className="flex h-11 flex-1 items-center rounded-full bg-card px-4 shadow-soft">
+        <div className="flex h-11 flex-1 items-center rounded-full border border-ink/[0.07] bg-card px-4 shadow-soft transition-[box-shadow] duration-200 focus-within:shadow-ring">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && send()}
             placeholder="Write a message…"
-            className="w-full bg-transparent text-[13px] font-semibold outline-none placeholder:text-fawn/80"
+            className="w-full bg-transparent text-[13px] font-medium outline-none placeholder:text-fawn/70"
             aria-label="Chat message"
           />
         </div>
         <button
           onClick={() => send()}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-tomato text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift active:translate-y-0"
+          className="pressable grid h-11 w-11 shrink-0 place-items-center rounded-full bg-tomato text-white shadow-soft hover:shadow-lift"
           title="Send"
           aria-label="Send message"
         >
@@ -498,53 +520,72 @@ function Disclosure({
   );
 }
 
+function shortModel(model: string): string {
+  const parts = model.split('/');
+  const name = parts[parts.length - 1] || model;
+  return name.length > 28 ? `${name.slice(0, 26)}…` : name;
+}
+
 function SettingsCard({
   initialKey,
   initialModel,
+  serverAI,
   onSave,
   onCancel,
 }: {
   initialKey: string;
   initialModel: string;
+  serverAI: ServerAIStatus | null;
   onSave: (key: string, model: string) => void;
   onCancel: () => void;
 }) {
   const [key, setKey] = useState(initialKey);
   const [model, setModel] = useState(initialModel);
+  const serverReady = !!serverAI?.configured;
 
   return (
-    <div className="mt-3 rounded-blob bg-card p-4 shadow-soft">
+    <div className="mt-3 rounded-blob border border-ink/[0.07] bg-card p-4 shadow-soft">
       <div className="flex items-center gap-2 text-[13px] font-extrabold">
-        <KeyIcon className="text-lavdeep" /> Requesty (session only)
+        <KeyIcon className="text-lavdeep" /> AI settings
       </div>
-      <p className="mt-1 text-[10.5px] font-semibold leading-relaxed text-fawn">
-        Paste your Requesty API key — it stays in this browser session and is
-        never saved on the server. Leave empty to use the built-in rules brain.
-      </p>
+      {serverReady ? (
+        <p className="mt-1 text-[10.5px] font-semibold leading-relaxed text-fawn">
+          Server is already using{' '}
+          <span className="text-ink">{serverAI?.provider === 'requesty' ? 'Requesty' : 'NVIDIA'}</span>
+          {' · '}
+          <span className="text-ink">{serverAI?.model || DEFAULT_MODEL}</span>.
+          Leave the key empty to keep that. Optional: paste a temporary session override below.
+        </p>
+      ) : (
+        <p className="mt-1 text-[10.5px] font-semibold leading-relaxed text-fawn">
+          No server AI key is configured. Paste a Requesty key for this browser session only —
+          it is never saved on the server.
+        </p>
+      )}
       <input
         type="password"
         value={key}
         onChange={(e) => setKey(e.target.value)}
-        placeholder="sk-…"
-        className="mt-2.5 w-full rounded-full bg-parchment px-4 py-2 text-[12px] font-semibold shadow-inner1 outline-none placeholder:text-fawn/60"
-        aria-label="Requesty API key"
+        placeholder={serverReady ? 'Optional override (rqsty-…)' : 'rqsty-…'}
+        className="mt-2.5 w-full rounded-full bg-parchment px-4 py-2 text-[12px] font-semibold shadow-inner1 outline-none placeholder:text-fawn/60 dark:bg-shell/60"
+        aria-label="Requesty API key override"
       />
       <input
         value={model}
         onChange={(e) => setModel(e.target.value)}
-        placeholder={DEFAULT_MODEL}
-        className="mt-2 w-full rounded-full bg-parchment px-4 py-2 text-[12px] font-semibold shadow-inner1 outline-none placeholder:text-fawn/60"
+        placeholder={serverAI?.model || DEFAULT_MODEL}
+        className="mt-2 w-full rounded-full bg-parchment px-4 py-2 text-[12px] font-semibold shadow-inner1 outline-none placeholder:text-fawn/60 dark:bg-shell/60"
         aria-label="Model"
       />
       <div className="mt-3 flex justify-end gap-2">
-        <button onClick={onCancel} className="rounded-full px-3 py-1.5 text-[11.5px] font-bold text-fawn transition hover:text-ink">
-          cancel
+        <button onClick={onCancel} className="pressable rounded-full px-3 py-1.5 text-[11.5px] font-bold text-fawn hover:text-ink">
+          Cancel
         </button>
         <button
           onClick={() => onSave(key, model)}
-          className="rounded-full bg-lavdeep px-4 py-1.5 text-[11.5px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5"
+          className="pressable rounded-full bg-lavdeep px-4 py-1.5 text-[11.5px] font-extrabold text-white shadow-soft"
         >
-          save
+          Save
         </button>
       </div>
     </div>

@@ -29,12 +29,11 @@ export default function WoodenShelf({
   if (seriesList.length === 0) return null;
 
   return (
-    <div className="mb-8">
-      {/* Shelf Title Bar */}
-      <div className="flex items-center justify-between px-1 mb-3">
-        <h3 className="text-lg font-black text-ink flex items-center gap-2">
+    <div className="mb-7">
+      <div className="mb-3 flex items-center justify-between px-0.5">
+        <h3 className="flex items-center gap-2 text-[17px] font-extrabold tracking-tight text-ink">
           {title}
-          <span className="rounded-full bg-peach/80 px-2.5 py-0.5 text-xs font-extrabold text-ink/70">
+          <span className="rounded-full bg-peach/70 px-2.5 py-0.5 text-[11px] font-bold text-ink/70">
             {seriesList.length}
           </span>
         </h3>
@@ -42,14 +41,14 @@ export default function WoodenShelf({
         {viewMode === 'shelf' && (
           <div className="flex items-center gap-1">
             <button
-              className="icon-btn !h-7 !w-7 rotate-180"
+              className="icon-btn !h-8 !w-8 rotate-180"
               aria-label={`Scroll ${title} shelf left`}
               onClick={() => shelfRef.current?.scrollBy({ left: -360, behavior: 'smooth' })}
             >
               <ChevronIcon />
             </button>
             <button
-              className="icon-btn !h-7 !w-7"
+              className="icon-btn !h-8 !w-8"
               aria-label={`Scroll ${title} shelf right`}
               onClick={() => shelfRef.current?.scrollBy({ left: 360, behavior: 'smooth' })}
             >
@@ -59,22 +58,20 @@ export default function WoodenShelf({
         )}
       </div>
 
-      {/* Book Cards Container */}
       <div className="relative">
         <div
           ref={shelfRef}
-          data-lenis-prevent
           className={
             viewMode === 'shelf'
-              ? 'flex gap-4 overflow-x-auto pb-4 pt-1 px-1'
-              : 'grid grid-cols-2 gap-4 pb-4 pt-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+              ? 'flex gap-3.5 overflow-x-auto scroll-px-2 px-0.5 pb-4 pt-1'
+              : 'grid grid-cols-2 gap-3.5 pb-4 pt-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
           }
         >
           {seriesList.map((s) => (
             <div
               key={s.id}
               data-card-id={s.id}
-              className={viewMode === 'shelf' ? 'w-[196px] shrink-0' : 'w-full'}
+              className={viewMode === 'shelf' ? 'w-[184px] shrink-0' : 'w-full'}
             >
               <MangaCard
                 series={s}
@@ -88,9 +85,8 @@ export default function WoodenShelf({
           ))}
         </div>
 
-        {/* Physical 3D Wooden Shelf Ledge (Readowl reference design) */}
         {viewMode === 'shelf' && (
-          <div className="mt-1 h-3.5 w-full rounded-full bg-gradient-to-r from-[#e7d8c4] via-[#d4bf0] to-[#c5ad91] shadow-[0_4px_10px_rgba(0,0,0,0.12)] border-b-2 border-[#a68c6e]" />
+          <div className="mt-0.5 h-3 w-full rounded-full border-b-2 border-[#b49a78] bg-gradient-to-r from-[#eadcc8] via-[#dbc7a8] to-[#c9b193] shadow-[0_3px_8px_rgba(31,35,43,0.1)] dark:border-[#6a5842] dark:from-[#3a3228] dark:via-[#2e2820] dark:to-[#241f1a] dark:shadow-[0_3px_10px_rgba(0,0,0,0.45)]" />
         )}
       </div>
     </div>

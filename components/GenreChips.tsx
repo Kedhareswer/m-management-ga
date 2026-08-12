@@ -2,12 +2,8 @@
 
 import { BookGlyph } from './icons';
 
-const CHIP_TINTS = ['#e2574c', '#8f7fd4', '#7fb69a', '#f2b64c', '#5a8fd6', '#d97fae', '#7d6ac2', '#3f7d63', '#b06a2a', '#a53a35'];
+const CHIP_TINTS = ['#d0443c', '#5d4ec4', '#4e9c7c', '#eda92b', '#3f7fc9', '#d97fae', '#7d6ac2', '#3f7d63', '#b06a2a', '#a53a35'];
 
-/**
- * The little row of book-shaped genre tabs from the reference design.
- * Genres are derived live from whatever is on your shelf.
- */
 export default function GenreChips({
   genres,
   active,
@@ -19,7 +15,7 @@ export default function GenreChips({
 }) {
   const all = ['All', ...genres];
   return (
-    <div data-intro="chips" className="flex gap-1 overflow-x-auto pb-1" data-lenis-prevent>
+    <div data-intro="chips" className="flex gap-1 overflow-x-auto pb-1">
       {all.map((g, i) => {
         const isActive = active === g;
         return (
@@ -30,7 +26,8 @@ export default function GenreChips({
             aria-pressed={isActive}
           >
             <span
-              className={`transition-transform duration-300 ${isActive ? 'scale-110 -rotate-3' : ''}`}
+              className={`transition-transform duration-200 ${isActive ? 'scale-105' : ''}`}
+              style={{ transitionTimingFunction: 'var(--ease-out)' }}
             >
               <BookGlyph tint={CHIP_TINTS[i % CHIP_TINTS.length]} />
             </span>

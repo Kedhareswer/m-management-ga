@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { GridIcon, StarIcon, HeartIcon, PlayIcon, BookmarkIcon, BellIcon } from './icons';
+import ThemeToggle from './ThemeToggle';
 
 import type { Series } from '@/lib/types';
 import BookCover from './BookCover';
@@ -31,23 +32,22 @@ export default function Sidebar({
 
   return (
     <>
-      {/* vertical rail — tablet & desktop */}
       <aside
-        className="relative hidden w-[96px] shrink-0 flex-col items-center py-6 md:flex"
+        className="relative hidden w-[92px] shrink-0 flex-col items-center py-5 md:flex"
         data-intro="sidebar"
       >
         <div className="grid h-12 w-12 place-items-center rounded-full bg-card shadow-soft" title="You">
           <span className="text-2xl" role="img" aria-label="reader avatar">🍊</span>
         </div>
 
-        <nav className="mt-8 flex flex-col gap-3">
+        <nav className="mt-8 flex flex-col gap-2">
           {NAV.map(({ id, icon: Icon, label }) => {
             const isActive = active === id;
             return (
               <button
                 key={id}
                 onClick={() => onPick(id)}
-                className={`icon-btn ${isActive ? '!text-tomato ring-2 ring-tomato/20' : ''}`}
+                className={`icon-btn ${isActive ? '!bg-cta !text-on-cta shadow-lift' : ''}`}
                 title={label}
                 aria-label={label}
                 aria-pressed={isActive}
@@ -58,19 +58,22 @@ export default function Sidebar({
           })}
         </nav>
 
-        <div className="relative mt-auto flex flex-col items-center gap-3 w-full px-1">
-          {/* "Currently reading" Mini Card Widget matching Reference Image 2 (bottom left) */}
+        <div className="relative mt-auto flex w-full flex-col items-center gap-2 px-1">
           {currentSeries && (
             <button
               onClick={() => onOpenReader?.(currentSeries)}
-              className="group relative flex w-full flex-col items-center rounded-2xl bg-card p-2 shadow-soft transition hover:-translate-y-1 hover:shadow-lift"
+              className="group relative flex w-full flex-col items-center rounded-xl bg-card p-2 shadow-soft transition-[box-shadow,transform] duration-150 hover:shadow-lift active:scale-[0.97] motion-safe:hover:-translate-y-0.5"
+              style={{ transitionTimingFunction: 'var(--ease-out)' }}
               title={`Continue reading ${currentSeries.title}`}
             >
-              <div className="text-[9px] font-extrabold text-tomato uppercase tracking-wider mb-1">
+              <div className="mb-1 text-[9px] font-extrabold uppercase tracking-wider text-tomato">
                 Reading
               </div>
-              <BookCover series={currentSeries} className="h-16 w-11 rounded shadow-sm group-hover:scale-105 transition-transform" />
-              <div className="mt-1 max-w-full truncate text-[10px] font-bold text-ink text-center">
+              <BookCover
+                series={currentSeries}
+                className="h-16 w-11 rounded shadow-sm transition-transform duration-200 motion-safe:group-hover:scale-[1.03]"
+              />
+              <div className="mt-1 max-w-full truncate text-center text-[10px] font-bold text-ink">
                 ch. {currentSeries.currentChapter}
               </div>
             </button>
@@ -81,24 +84,25 @@ export default function Sidebar({
             title="Notifications"
             aria-label="Notifications"
             onClick={() => {
-              setToast("You're all caught up! 🎉");
+              setToast("You're all caught up");
               setTimeout(() => setToast(null), 2500);
             }}
           >
             <BellIcon />
           </button>
+          <ThemeToggle />
           {toast && (
-            <div className="absolute bottom-14 left-1/2 w-max -translate-x-1/2 whitespace-nowrap rounded-full bg-ink px-3 py-1.5 text-[11px] font-bold text-parchment shadow-lift">
+            <div className="ui-toast absolute bottom-14 left-1/2 w-max -translate-x-1/2 whitespace-nowrap rounded-full bg-cta px-3 py-1.5 text-[11px] font-bold text-on-cta shadow-lift">
               {toast}
             </div>
           )}
         </div>
       </aside>
 
-      {/* floating bottom bar — phones */}
       <nav
-        className="fixed bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-card px-3 py-2 shadow-lift md:hidden"
-        aria-label="Shelf filters"
+        className="fixed left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-ink/[0.1] bg-card/95 px-2 py-1.5 shadow-lift backdrop-blur-md md:hidden"
+        style={{ bottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+        aria-label="Library filters"
       >
         {NAV.map(({ id, icon: Icon, label }) => {
           const isActive = active === id;
@@ -106,8 +110,8 @@ export default function Sidebar({
             <button
               key={id}
               onClick={() => onPick(id)}
-              className={`grid h-11 w-11 place-items-center rounded-full transition active:scale-90 ${
-                isActive ? 'bg-tomato text-white shadow-soft' : 'text-fawn hover:text-ink'
+              className={`pressable grid h-10 w-10 place-items-center rounded-full ${
+                isActive ? 'bg-cta text-on-cta shadow-soft' : 'text-fawn'
               }`}
               title={label}
               aria-label={label}
@@ -117,6 +121,8 @@ export default function Sidebar({
             </button>
           );
         })}
+        <div className="mx-1 h-5 w-px bg-ink/10" />
+        <ThemeToggle className="!h-10 !w-10 !shadow-none !bg-transparent" />
       </nav>
     </>
   );

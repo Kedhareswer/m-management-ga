@@ -69,18 +69,18 @@ export default function AddMangaModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-md transition-opacity"
+      className="fixed inset-0 z-50 flex items-end justify-center modal-scrim sm:items-center sm:p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-manga-title"
     >
       <div
-        className="w-full max-w-md rounded-panel bg-card p-6 shadow-lift border border-white/60 transition-all transform scale-100"
+        className="modal-in max-h-[92dvh] w-full overflow-y-auto rounded-t-panel bg-card p-5 shadow-lift sm:max-w-md sm:rounded-panel sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">
-          <h2 id="add-manga-title" className="text-[19px] font-extrabold">
+          <h2 id="add-manga-title" className="text-[19px] font-extrabold tracking-tight">
             Add a series
           </h2>
           <button
@@ -92,25 +92,25 @@ export default function AddMangaModal({
             <CloseIcon />
           </button>
         </div>
-        <p className="mt-1 text-[12.5px] font-semibold leading-relaxed text-fawn">
+        <p className="mt-1 text-[12.5px] font-medium leading-relaxed text-fawn">
           Paste a link to the series page — or the exact chapter you&apos;re on — and
           we&apos;ll pull the title, genres, cover and author automatically.
         </p>
 
         {blocked ? (
           <div className="mt-4">
-            <div className="rounded-blob bg-sun/15 p-4">
+            <div className="rounded-xl bg-sun/15 p-4">
               <div className="text-[13px] font-extrabold text-[#a8752a]">
-                🔖 Tracked — but the site fought us off
+                Tracked — but the site fought us off
               </div>
-              <p className="mt-1 text-[12px] font-semibold leading-relaxed text-ink/75">
+              <p className="mt-1 text-[12px] font-medium leading-relaxed text-ink/75">
                 {blocked.blockReason ? <><span className="font-bold">{blocked.blockReason}</span> blocked auto-details. </> : 'The site blocked auto-details. '}
                 Your chapter tracking and “continue reading” still work perfectly — only the
                 genres/cover/author need a manual touch. Open the series to fill them in.
               </p>
             </div>
             <div className="mt-4 flex items-center justify-end gap-2">
-              <button onClick={onClose} className="rounded-full px-4 py-2.5 text-[13px] font-bold text-fawn transition hover:text-ink">
+              <button onClick={onClose} className="pressable rounded-full px-4 py-2.5 text-[13px] font-bold text-fawn hover:text-ink">
                 Done
               </button>
               <button
@@ -118,7 +118,7 @@ export default function AddMangaModal({
                   onOpenSeries(blocked.seriesId);
                   onClose();
                 }}
-                className="rounded-full bg-lavdeep px-5 py-2.5 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift"
+                className="pressable rounded-full bg-lavdeep px-5 py-2.5 text-[13px] font-extrabold text-white shadow-soft hover:shadow-lift"
               >
                 Open &amp; edit details →
               </button>
@@ -126,7 +126,7 @@ export default function AddMangaModal({
           </div>
         ) : (
           <>
-            <div className="mt-4 flex items-center gap-2 rounded-full bg-parchment px-4 py-3 shadow-inner1">
+            <div className="mt-4 flex items-center gap-2 rounded-full bg-parchment px-4 py-3 shadow-inner1 transition-[box-shadow] duration-200 focus-within:shadow-ring dark:bg-shell/60">
               <LinkIcon className="shrink-0 text-lavdeep" />
               <input
                 autoFocus
@@ -134,7 +134,7 @@ export default function AddMangaModal({
                 onChange={(e) => setUrl(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submit()}
                 placeholder="https://…"
-                className="w-full bg-transparent text-[14px] font-semibold outline-none placeholder:text-fawn/70"
+                className="w-full bg-transparent text-[14px] font-medium outline-none placeholder:text-fawn/70"
                 aria-label="Manga link"
               />
             </div>
@@ -144,15 +144,14 @@ export default function AddMangaModal({
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 onClick={onClose}
-                className="rounded-full px-4 py-2.5 text-[13px] font-bold text-fawn transition hover:text-ink"
+                className="pressable rounded-full px-4 py-2.5 text-[13px] font-bold text-fawn hover:text-ink"
               >
                 Cancel
               </button>
               <button
                 onClick={submit}
                 disabled={!isUrl || adding}
-                className="flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-extrabold text-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lift disabled:cursor-default disabled:opacity-60"
-                style={{ background: 'linear-gradient(90deg, #f2b64c 0%, #7fb69a 45%, #8f7fd4 100%)' }}
+                className="pressable flex items-center gap-2 rounded-full bg-cta px-5 py-2.5 text-[13px] font-extrabold text-on-cta shadow-soft hover:opacity-90 hover:shadow-lift disabled:cursor-default disabled:opacity-50"
               >
                 {adding ? (
                   <>
@@ -160,7 +159,7 @@ export default function AddMangaModal({
                   </>
                 ) : (
                   <>
-                    <PlusIcon /> add to shelf
+                    <PlusIcon /> Add to shelf
                   </>
                 )}
               </button>
